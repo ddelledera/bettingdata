@@ -70,16 +70,24 @@ def save_prediction(conn, match_id, prob_home, prob_draw, prob_away):
     """, (match_id, prob_home, prob_draw, prob_away, datetime.now(timezone.utc).isoformat()))
 
 
+EUROPEAN_COMPETITIONS = {"Champions League", "Europa League", "Conference League"}
+
+
 def main():
     conn = sqlite3.connect(DB_PATH)
     with open("schema.sql") as f:
         conn.executescript(f.read())
 
     leagues = list_leagues(conn)
-    print(f"Campionati trovati nel database: {leagues}")
+    domestic_leagues = [l for l in leagues if l not in EUROPEAN_COMPETITIONS]
+    print(f"Campionati nazionali trovati: {domestic_leagues}")
 
     predicted = 0
-    for league in leagues:
+
+    # 1) Un modello separato per ciascun campionato nazionale, come prima:
+    #    più corretto (squadre confrontate solo dove giocano davvero tra loro)
+    #    e più veloce da allenare.
+    for league in domestic_leagues:
         training_matches = load_training_matches(conn, league)
         print(f"\n{league}: {len(training_matches)} partite storiche disponibili")
         if len(training_matches) < 50:
@@ -101,6 +109,47 @@ def main():
             save_prediction(conn, match_id, ph, pd_, pa)
             predicted += 1
             print(f"    {home} vs {away}: casa {ph:.0%}  pareggio {pd_:.0%}  trasferta {pa:.0%}")
+
+    # 2) Un unico modello "europeo" condiviso, per Champions/Europa/Conference:
+    #    combina TUTTE le partite nazionali con le partite di Champions League
+    #    già giocate, che fanno da "ponte" tra campionati diversi che altrimenti
+    #    non avrebbero mai squadre in comune da confrontare.
+    european_upcoming_present = any(l in leagues for l in EUROPEAN_COMPETITIONS)
+    if european_upcoming_present:
+        combined_matches = []
+        for league in domestic_leagues:
+            combined_matches += load_training_matches(conn, league)
+
+        bridge_matches = load_training_matches(conn, "Champions League")
+        combined_matches += bridge_matches
+
+        print(f"\nModello europeo (per Champions/Europa/Conference)")
+        print(f"  Partite di collegamento (Champions League già giocate): {len(bridge_matches)}")
+        if len(bridge_matches) < 20:
+            print("  Attenzione: poche partite di collegamento finora — il confronto tra "
+                  "campionati diversi sarà poco preciso all'inizio della stagione, ma "
+                  "migliora automaticamente partita dopo partita.")
+
+        if len(combined_matches) >= 50:
+            euro_model = DixonColesModel()
+            euro_model.fit(combined_matches)
+            print(f"  Modello europeo allenato ({len(euro_model.teams)} squadre).")
+
+            for competition in EUROPEAN_COMPETITIONS:
+                if competition not in leagues:
+                    continue
+                upcoming = load_upcoming_matches(conn, competition)
+                print(f"  {competition}: {len(upcoming)} partite in arrivo")
+
+                for match_id, home, away in upcoming:
+                    missing = [t for t in (home, away) if t not in euro_model.teams]
+                    if missing:
+                        print(f"    (saltata: {home} vs {away} — non riconosciuta: {', '.join(missing)})")
+                        continue
+                    ph, pd_, pa = euro_model.predict_match(home, away)
+                    save_prediction(conn, match_id, ph, pd_, pa)
+                    predicted += 1
+                    print(f"    {home} vs {away}: casa {ph:.0%}  pareggio {pd_:.0%}  trasferta {pa:.0%}")
 
     conn.commit()
     conn.close()
