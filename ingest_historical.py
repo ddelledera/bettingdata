@@ -17,6 +17,7 @@ import requests
 import pandas as pd
 from io import StringIO
 from datetime import datetime, date
+from team_utils import get_or_create_team
 
 DB_PATH = "data.db"
 
@@ -38,32 +39,6 @@ BASE_URL = "https://www.football-data.co.uk/mmz4281/{season}/{league}.csv"
 # Colonne con le quote 1X2 medie di mercato (presenti nella maggior parte
 # dei file storici). Le usiamo per popolare anche lo storico delle quote.
 ODDS_COLUMNS = {"Home": "AvgH", "Draw": "AvgD", "Away": "AvgA"}
-
-
-def normalize_team_name(name):
-    """
-    Le squadre a volte hanno nomi leggermente diversi tra fonti diverse
-    (es. 'Inter' vs 'Internazionale'). Questo dizionario li uniforma.
-    Lo arricchiremo quando colleghiamo la fonte delle partite in arrivo,
-    così i nomi combaciano sempre tra storico e partite future.
-    """
-    fixes = {
-        "Inter": "Inter",
-        "AC Milan": "Milan",
-        "Verona": "Hellas Verona",
-    }
-    name = name.strip()
-    return fixes.get(name, name)
-
-
-def get_or_create_team(cur, name):
-    name = normalize_team_name(name)
-    cur.execute("SELECT id FROM teams WHERE name = ?", (name,))
-    row = cur.fetchone()
-    if row:
-        return row[0]
-    cur.execute("INSERT INTO teams (name) VALUES (?)", (name,))
-    return cur.lastrowid
 
 
 def download_season(league_code, season):
