@@ -62,14 +62,21 @@ def fetch_upcoming(competition_code):
     date_from = date.today().isoformat()
     date_to = (date.today() + timedelta(days=DAYS_AHEAD)).isoformat()
     url = BASE_URL.format(code=competition_code)
+    # NOTA: non filtriamo per "status" lato server. football-data.org usa
+    # SCHEDULED per le partite senza orario confermato e TIMED per quelle
+    # con orario già fissato (la maggior parte, nel breve periodo) — filtrare
+    # solo su SCHEDULED escluderebbe quasi tutte le partite reali. Filtriamo
+    # invece noi stessi, escludendo solo quelle già concluse o annullate.
     response = requests.get(
         url,
         headers={"X-Auth-Token": API_KEY},
-        params={"status": "SCHEDULED", "dateFrom": date_from, "dateTo": date_to},
+        params={"dateFrom": date_from, "dateTo": date_to},
         timeout=20,
     )
     response.raise_for_status()
-    return response.json().get("matches", [])
+    all_matches = response.json().get("matches", [])
+    escluse = {"FINISHED", "POSTPONED", "CANCELLED", "SUSPENDED", "AWARDED"}
+    return [m for m in all_matches if m.get("status") not in escluse]
 
 
 def load_into_db(matches, league_name, conn):
