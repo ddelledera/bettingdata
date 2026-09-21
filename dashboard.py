@@ -245,10 +245,23 @@ with tab_simulazione:
                                         value=100, step=10, format="+%d%%")
             num_matches = st.slider("Numero di partite:", min_value=1, max_value=5, value=3)
 
+        max_risk = st.select_slider(
+            "Rischio massimo per singola selezione:",
+            options=["🟢 Solo basso", "🟡 Basso o medio", "🔴 Qualsiasi"],
+            value="🔴 Qualsiasi",
+        )
+        risk_order = {"🟢 Rischio basso": 0, "🟡 Rischio medio": 1, "🔴 Rischio alto": 2}
+        max_risk_level = {"🟢 Solo basso": 0, "🟡 Basso o medio": 1, "🔴 Qualsiasi": 2}[max_risk]
+        st.caption(
+            "Limitare al rischio basso riduce le partite disponibili tra cui scegliere: "
+            "con poche selezioni 'sicure', potrebbe non essere possibile raggiungere il "
+            "ritorno desiderato — in quel caso te lo segnalo."
+        )
+
         if st.button("🔍 Trova la combinazione migliore"):
             # per ciascuna partita disponibile su questo bookmaker, teniamo solo
             # la SUA selezione migliore (non ha senso mettere due esiti della
-            # stessa partita nella stessa schedina)
+            # stessa partita nella stessa schedina), filtrando per rischio
             legs_by_match = {}
             for _, row in matches_df.iterrows():
                 bm_odds = odds_by_bookmaker_for_match(conn, row["id"], sim_bookmaker)
@@ -256,6 +269,9 @@ with tab_simulazione:
                     continue
                 model_probs = {"Home": row["prob_home"], "Draw": row["prob_draw"], "Away": row["prob_away"]}
                 candidates = find_value_bets(model_probs, bm_odds, min_ev=-1)  # anche EV negativo: decide l'algoritmo
+                # scartiamo le selezioni più rischiose del limite scelto
+                candidates = [c for c in candidates
+                              if risk_order[risk_label(c["odds"])] <= max_risk_level]
                 if candidates:
                     best_leg = dict(candidates[0])
                     best_leg["match_label"] = f"{row['home']} vs {row['away']}"
@@ -266,7 +282,9 @@ with tab_simulazione:
 
             if result is None:
                 st.warning(f"Non ci sono abbastanza partite disponibili su {sim_bookmaker} "
-                           f"per formare una combinazione di {num_matches} partite.")
+                           f"(con il rischio scelto) per formare una combinazione di "
+                           f"{num_matches} partite. Prova ad allargare il rischio massimo, "
+                           f"o riduci il numero di partite.")
             else:
                 combo, hit_target = result
                 combined_odds = math.prod(leg["odds"] for leg in combo)
@@ -276,8 +294,9 @@ with tab_simulazione:
 
                 if not hit_target:
                     st.info(f"Non ho trovato una combinazione da {num_matches} partite su "
-                            f"{sim_bookmaker} che raggiunga +{target_roi_pct}% — questa è "
-                            f"quella con il ritorno più alto possibile disponibile ora.")
+                            f"{sim_bookmaker} (con il rischio scelto) che raggiunga "
+                            f"+{target_roi_pct}% — questa è quella con il ritorno più alto "
+                            f"possibile disponibile ora.")
                 else:
                     st.success("Trovata una combinazione che raggiunge l'obiettivo:")
 
@@ -287,7 +306,8 @@ with tab_simulazione:
                                     "Away": "2 (trasferta)"}[leg["selection"]]
                     st.write(f"- **{leg['match_label']}** ({leg['match_date']}) — "
                              f"{esito_label} @ {leg['odds']} "
-                             f"(nostra prob. {leg['model_probability']:.0%})")
+                             f"(nostra prob. {leg['model_probability']:.0%}) "
+                             f"— {risk_label(leg['odds'])}")
 
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Quota combinata", f"{combined_odds:.2f}")
