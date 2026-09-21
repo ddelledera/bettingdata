@@ -15,8 +15,11 @@ from model import DixonColesModel
 DB_PATH = "data.db"
 
 
-def load_training_matches(conn):
-    """Carica tutte le partite già giocate, con quanti giorni fa sono avvenute."""
+def load_training_matches(conn, league):
+    """Carica le partite già giocate DI UN CAMPIONATO, con quanti giorni fa
+    sono avvenute. Alleniamo un modello per campionato: squadre di leghe
+    diverse non giocano mai tra loro, quindi mischiarle in un unico modello
+    non avrebbe senso (e sarebbe anche molto più lento)."""
     today = date.today()
     rows = conn.execute("""
         SELECT m.date, h.name, a.name, m.home_goals, m.away_goals
@@ -24,7 +27,8 @@ def load_training_matches(conn):
         JOIN teams h ON m.home_team_id = h.id
         JOIN teams a ON m.away_team_id = a.id
         WHERE m.home_goals IS NOT NULL AND m.away_goals IS NOT NULL
-    """).fetchall()
+          AND m.league = ?
+    """, (league,)).fetchall()
 
     matches = []
     for match_date, home, away, hg, ag in rows:
@@ -38,15 +42,20 @@ def load_training_matches(conn):
     return matches
 
 
-def load_upcoming_matches(conn):
+def load_upcoming_matches(conn, league):
     rows = conn.execute("""
         SELECT m.id, h.name, a.name
         FROM matches m
         JOIN teams h ON m.home_team_id = h.id
         JOIN teams a ON m.away_team_id = a.id
-        WHERE m.home_goals IS NULL AND m.date >= date('now')
-    """).fetchall()
+        WHERE m.home_goals IS NULL AND m.date >= date('now') AND m.league = ?
+    """, (league,)).fetchall()
     return rows
+
+
+def list_leagues(conn):
+    rows = conn.execute("SELECT DISTINCT league FROM matches").fetchall()
+    return [r[0] for r in rows]
 
 
 def save_prediction(conn, match_id, prob_home, prob_draw, prob_away):
@@ -66,34 +75,36 @@ def main():
     with open("schema.sql") as f:
         conn.executescript(f.read())
 
-    training_matches = load_training_matches(conn)
-    print(f"Partite storiche disponibili per l'allenamento: {len(training_matches)}")
-    if len(training_matches) < 50:
-        print("Attenzione: pochi dati storici, le previsioni saranno poco affidabili "
-              "finché non ne carichiamo di più.")
-        if not training_matches:
-            print("Nessun dato storico ancora: esegui prima ingest_historical.py")
-            return
-
-    model = DixonColesModel()
-    model.fit(training_matches)
-    print("Modello allenato.")
-
-    upcoming = load_upcoming_matches(conn)
-    print(f"Partite in arrivo da prevedere: {len(upcoming)}")
+    leagues = list_leagues(conn)
+    print(f"Campionati trovati nel database: {leagues}")
 
     predicted = 0
-    for match_id, home, away in upcoming:
-        if home not in model.teams or away not in model.teams:
-            continue  # squadra mai vista nei dati storici: non possiamo stimarla
-        ph, pd_, pa = model.predict_match(home, away)
-        save_prediction(conn, match_id, ph, pd_, pa)
-        predicted += 1
-        print(f"  {home} vs {away}: casa {ph:.0%}  pareggio {pd_:.0%}  trasferta {pa:.0%}")
+    for league in leagues:
+        training_matches = load_training_matches(conn, league)
+        print(f"\n{league}: {len(training_matches)} partite storiche disponibili")
+        if len(training_matches) < 50:
+            print("  Attenzione: pochi dati storici, previsioni poco affidabili per ora.")
+            if not training_matches:
+                continue
+
+        model = DixonColesModel()
+        model.fit(training_matches)
+        print(f"  Modello allenato ({len(model.teams)} squadre).")
+
+        upcoming = load_upcoming_matches(conn, league)
+        print(f"  Partite in arrivo da prevedere: {len(upcoming)}")
+
+        for match_id, home, away in upcoming:
+            if home not in model.teams or away not in model.teams:
+                continue  # squadra mai vista nei dati storici: non possiamo stimarla
+            ph, pd_, pa = model.predict_match(home, away)
+            save_prediction(conn, match_id, ph, pd_, pa)
+            predicted += 1
+            print(f"    {home} vs {away}: casa {ph:.0%}  pareggio {pd_:.0%}  trasferta {pa:.0%}")
 
     conn.commit()
     conn.close()
-    print(f"\nFatto. {predicted} previsioni salvate.")
+    print(f"\nFatto. {predicted} previsioni salvate in totale.")
 
 
 if __name__ == "__main__":
