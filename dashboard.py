@@ -66,9 +66,8 @@ def best_odds_for_match(conn, match_id):
 
 def list_bookmakers(conn):
     """Tutti i bookmaker di cui abbiamo quote per le partite in arrivo,
-    filtrati a quelli con licenza ADM (autorizzati in Italia) — servono
-    per la schedina, che va giocata tutta presso lo stesso bookmaker, e
-    deve essere uno che si può davvero usare."""
+    con quelli italiani (ADM) messi per primi — servono per la schedina,
+    che va giocata tutta presso lo stesso bookmaker."""
     query = """
         SELECT DISTINCT o.bookmaker
         FROM odds_snapshots o
@@ -77,7 +76,21 @@ def list_bookmakers(conn):
         ORDER BY o.bookmaker
     """
     all_bookmakers = [r[0] for r in conn.execute(query).fetchall()]
-    return [b for b in all_bookmakers if b in BOOKMAKER_ITALIA]
+    italiani = sorted(b for b in all_bookmakers if b in BOOKMAKER_ITALIA)
+    altri = sorted(b for b in all_bookmakers if b not in BOOKMAKER_ITALIA)
+    return italiani + altri
+
+
+def bookmaker_display_label(bookmaker):
+    """Etichetta mostrata nei menu: segnala con una bandierina i bookmaker
+    che sappiamo avere licenza ADM (autorizzati in Italia). Gli altri sono
+    bookmaker reali ma non necessariamente utilizzabili legalmente
+    dall'Italia — mostrati comunque, per confronto e per non bloccare le
+    simulazioni quando i pochi bookmaker italiani coperti dalla nostra
+    fonte non hanno quote per una partita."""
+    if bookmaker in BOOKMAKER_ITALIA:
+        return f"🇮🇹 {bookmaker} (ADM)"
+    return bookmaker
 
 
 def odds_by_bookmaker_for_match(conn, match_id, bookmaker):
@@ -207,7 +220,8 @@ with tab_schedina:
     if not bookmakers:
         st.info("Non ci sono ancora quote salvate per costruire una schedina.")
     else:
-        selected_bookmaker = st.selectbox("Scegli il bookmaker:", bookmakers)
+        selected_bookmaker = st.selectbox("Scegli il bookmaker:", bookmakers,
+                                           format_func=bookmaker_display_label)
 
         candidate_legs = {}  # etichetta leggibile -> dati della selezione
         for _, row in matches_df.iterrows():
@@ -267,7 +281,8 @@ with tab_simulazione:
         col_a, col_b = st.columns(2)
         with col_a:
             stake = st.number_input("Puntata (€):", min_value=1.0, value=10.0, step=1.0)
-            sim_bookmaker = st.selectbox("Bookmaker:", bookmakers_sim, key="sim_bookmaker")
+            sim_bookmaker = st.selectbox("Bookmaker:", bookmakers_sim, key="sim_bookmaker",
+                                          format_func=bookmaker_display_label)
         with col_b:
             target_roi_pct = st.slider("Ritorno desiderato:", min_value=20, max_value=500,
                                         value=100, step=10, format="+%d%%")
