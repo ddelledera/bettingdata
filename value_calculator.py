@@ -67,3 +67,34 @@ def find_value_bets(model_probabilities, odds_dict, min_ev=0.02):
             })
     results.sort(key=lambda r: r["ev"], reverse=True)
     return results
+
+
+def combine_parlay(legs):
+    """
+    Combina più selezioni indipendenti (partite diverse) in un'unica
+    schedina. Le partite diverse si considerano indipendenti tra loro
+    (il risultato dell'una non influenza l'altra), quindi le probabilità
+    si moltiplicano e le quote pure — è così che funziona davvero una
+    schedina dal vivo.
+
+    legs: lista di dict, ciascuno con almeno "model_probability" e "odds"
+    Ritorna: probabilità combinata, quota combinata, EV, puntata Kelly.
+    """
+    if not legs:
+        return {"combined_probability": 0, "combined_odds": 0, "ev": 0, "kelly_stake_pct": 0}
+
+    combined_prob = 1.0
+    combined_odds = 1.0
+    for leg in legs:
+        combined_prob *= leg["model_probability"]
+        combined_odds *= leg["odds"]
+
+    ev = expected_value(combined_prob, combined_odds)
+    stake = kelly_fraction(combined_prob, combined_odds) * 100
+
+    return {
+        "combined_probability": round(combined_prob, 4),
+        "combined_odds": round(combined_odds, 2),
+        "ev": round(ev, 3),
+        "kelly_stake_pct": round(stake, 2),
+    }
