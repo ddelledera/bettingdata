@@ -1,3 +1,9 @@
+# Questo file fa succedere una cosa "magica": ogni giorno, in automatico e
+# gratis, un computer nel cloud scarica i dati nuovi, li allena col modello,
+# e salva i risultati aggiornati — senza che tu debba accendere nulla.
+#
+# Non serve capire questo file. Va semplicemente caricato così com'è.
+
 name: Aggiorna dati e previsioni
 
 on:
@@ -31,10 +37,20 @@ jobs:
           FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
         run: python fetch_fixtures.py
 
+      - name: Aggiorna risultati Champions League (per collegare i campionati)
+        env:
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+        run: python ingest_european_cups.py
+
       - name: Scarica quote live
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: python fetch_odds.py
+
+      - name: Scarica partite e quote Champions/Europa/Conference
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python fetch_european_odds.py
 
       - name: Calcola le nuove previsioni
         run: python run_model.py
