@@ -54,8 +54,10 @@ def best_odds_for_match(conn, match_id):
 
 
 def list_bookmakers(conn):
-    """Tutti i bookmaker di cui abbiamo quote per le partite in arrivo —
-    servono per la schedina, che va giocata tutta presso lo stesso bookmaker."""
+    """Tutti i bookmaker di cui abbiamo quote per le partite in arrivo,
+    filtrati a quelli con licenza ADM (autorizzati in Italia) — servono
+    per la schedina, che va giocata tutta presso lo stesso bookmaker, e
+    deve essere uno che si può davvero usare."""
     query = """
         SELECT DISTINCT o.bookmaker
         FROM odds_snapshots o
@@ -63,7 +65,8 @@ def list_bookmakers(conn):
         WHERE m.date >= date('now')
         ORDER BY o.bookmaker
     """
-    return [r[0] for r in conn.execute(query).fetchall()]
+    all_bookmakers = [r[0] for r in conn.execute(query).fetchall()]
+    return [b for b in all_bookmakers if b in BOOKMAKER_ITALIA]
 
 
 def odds_by_bookmaker_for_match(conn, match_id, bookmaker):
@@ -89,6 +92,17 @@ def risk_label(odds):
     elif odds <= 3.0:
         return "🟡 Rischio medio"
     return "🔴 Rischio alto"
+
+
+# Bookmaker con licenza ADM (autorizzati in Italia). Se un bookmaker italiano
+# reale non compare in questa lista, va aggiunto qui: potrebbe comparire con
+# un nome leggermente diverso nella fonte delle quote.
+BOOKMAKER_ITALIA = {
+    "Bet365", "Sisal", "Snai", "Eurobet", "Goldbet", "Betflag", "Planetwin365",
+    "Lottomatica", "William Hill", "Betsson", "NetBet", "PokerStars",
+    "AdmiralBet", "Marathonbet", "Marathon Bet", "Bwin", "Betfair", "888sport",
+    "Stake", "Vincitu", "Vincitù", "StarCasino",
+}
 
 
 def compute_opportunities(conn, matches_df, min_ev):
@@ -259,9 +273,12 @@ with tab_simulazione:
         )
 
         if st.button("🔍 Trova la combinazione migliore"):
-            # per ciascuna partita disponibile su questo bookmaker, teniamo solo
-            # la SUA selezione migliore (non ha senso mettere due esiti della
-            # stessa partita nella stessa schedina), filtrando per rischio
+            # per ciascuna partita disponibile su questo bookmaker, teniamo
+            # TUTTE le selezioni che rispettano il rischio scelto (non solo
+            # la migliore per EV): così l'algoritmo può scegliere, partita
+            # per partita, quella che serve davvero per la combinazione
+            # complessiva più solida — il rischio pesa sulla scelta finale,
+            # non solo su cosa scartare a monte.
             legs_by_match = {}
             for _, row in matches_df.iterrows():
                 bm_odds = odds_by_bookmaker_for_match(conn, row["id"], sim_bookmaker)
@@ -269,14 +286,13 @@ with tab_simulazione:
                     continue
                 model_probs = {"Home": row["prob_home"], "Draw": row["prob_draw"], "Away": row["prob_away"]}
                 candidates = find_value_bets(model_probs, bm_odds, min_ev=-1)  # anche EV negativo: decide l'algoritmo
-                # scartiamo le selezioni più rischiose del limite scelto
                 candidates = [c for c in candidates
                               if risk_order[risk_label(c["odds"])] <= max_risk_level]
                 if candidates:
-                    best_leg = dict(candidates[0])
-                    best_leg["match_label"] = f"{row['home']} vs {row['away']}"
-                    best_leg["match_date"] = row["date"]
-                    legs_by_match[row["id"]] = best_leg
+                    for c in candidates:
+                        c["match_label"] = f"{row['home']} vs {row['away']}"
+                        c["match_date"] = row["date"]
+                    legs_by_match[row["id"]] = candidates
 
             result = find_best_combination(legs_by_match, num_matches, target_roi_pct / 100)
 
