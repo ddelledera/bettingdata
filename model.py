@@ -13,24 +13,36 @@ vittoria casa / pareggio / vittoria trasferta.
 Include anche una piccola correzione (la parte "Dixon-Coles" vera e propria)
 che aggiusta le stime per i risultati bassi (0-0, 1-0, 0-1, 1-1), perché il
 semplice modello di Poisson tende a sbagliarli leggermente.
+
+NOTA TECNICA: i calcoli sono scritti in forma "vettoriale" (con numpy),
+cioè elaborano tutte le partite in un colpo solo invece che una alla volta.
+È lo stesso identico modello di prima, solo molto più veloce da allenare.
 """
 
 import numpy as np
 from scipy.optimize import minimize
-from scipy.stats import poisson
+from scipy.special import gammaln
 
 
-def _tau(home_goals, away_goals, lambda_home, lambda_away, rho):
-    """Correzione Dixon-Coles per i risultati a basso punteggio."""
-    if home_goals == 0 and away_goals == 0:
-        return 1 - lambda_home * lambda_away * rho
-    elif home_goals == 0 and away_goals == 1:
-        return 1 + lambda_home * rho
-    elif home_goals == 1 and away_goals == 0:
-        return 1 + lambda_away * rho
-    elif home_goals == 1 and away_goals == 1:
-        return 1 - rho
-    return 1.0
+def _poisson_logpmf(k, lam):
+    """Log-probabilità di Poisson, calcolata per tutte le partite insieme."""
+    lam = np.clip(lam, 1e-6, None)
+    return k * np.log(lam) - lam - gammaln(k + 1)
+
+
+def _tau_correction(home_goals, away_goals, lam_home, lam_away, rho):
+    """Correzione Dixon-Coles per i risultati a basso punteggio, per tutte
+    le partite insieme."""
+    tau = np.ones_like(lam_home)
+    m00 = (home_goals == 0) & (away_goals == 0)
+    m01 = (home_goals == 0) & (away_goals == 1)
+    m10 = (home_goals == 1) & (away_goals == 0)
+    m11 = (home_goals == 1) & (away_goals == 1)
+    tau[m00] = 1 - lam_home[m00] * lam_away[m00] * rho
+    tau[m01] = 1 + lam_home[m01] * rho
+    tau[m10] = 1 + lam_away[m10] * rho
+    tau[m11] = 1 - rho
+    return np.clip(tau, 1e-10, None)
 
 
 class DixonColesModel:
@@ -52,30 +64,32 @@ class DixonColesModel:
         n = len(self.teams)
         team_idx = {t: i for i, t in enumerate(self.teams)}
 
-        # Vettore parametri: [attacco_1..attacco_n, difesa_1..difesa_n, home_adv, rho]
-        x0 = np.concatenate([np.zeros(n), np.zeros(n), [0.1, -0.05]])
-
+        # Precalcolo tutti gli array una sola volta (non ad ogni tentativo
+        # dell'ottimizzatore): è qui che si guadagna la velocità.
+        home_i = np.array([team_idx[m["home_team"]] for m in matches])
+        away_i = np.array([team_idx[m["away_team"]] for m in matches])
+        home_g = np.array([m["home_goals"] for m in matches], dtype=float)
+        away_g = np.array([m["away_goals"] for m in matches], dtype=float)
         weights = np.array([np.exp(-self.decay_rate * m["days_ago"]) for m in matches])
+
+        x0 = np.concatenate([np.zeros(n), np.zeros(n), [0.1, -0.05]])
 
         def neg_log_likelihood(x):
             attack = x[:n]
             defense = x[n:2 * n]
             home_adv = x[2 * n]
             rho = x[2 * n + 1]
-            ll = 0.0
-            for w, m in zip(weights, matches):
-                hi, ai = team_idx[m["home_team"]], team_idx[m["away_team"]]
-                lam_home = np.exp(attack[hi] - defense[ai] + home_adv)
-                lam_away = np.exp(attack[ai] - defense[hi])
-                lam_home = np.clip(lam_home, 1e-6, 15)
-                lam_away = np.clip(lam_away, 1e-6, 15)
-                tau = _tau(m["home_goals"], m["away_goals"], lam_home, lam_away, rho)
-                tau = max(tau, 1e-10)
-                p = (tau * poisson.pmf(m["home_goals"], lam_home) *
-                     poisson.pmf(m["away_goals"], lam_away))
-                p = max(p, 1e-10)
-                ll += w * np.log(p)
-            return -ll
+
+            log_lam_home = np.clip(attack[home_i] - defense[away_i] + home_adv, -20, 3)
+            log_lam_away = np.clip(attack[away_i] - defense[home_i], -20, 3)
+            lam_home = np.exp(log_lam_home)
+            lam_away = np.exp(log_lam_away)
+
+            tau = _tau_correction(home_g, away_g, lam_home, lam_away, rho)
+            ll = weights * (np.log(tau) +
+                             _poisson_logpmf(home_g, lam_home) +
+                             _poisson_logpmf(away_g, lam_away))
+            return -np.sum(ll)
 
         # Vincolo: la somma delle forze d'attacco è fissata a 0 (altrimenti il
         # modello ha infinite soluzioni equivalenti: serve un punto di riferimento).
@@ -107,19 +121,20 @@ class DixonColesModel:
         lam_home = np.exp(a[home_team] - d[away_team] + home_adv)
         lam_away = np.exp(a[away_team] - d[home_team])
 
-        prob_home, prob_draw, prob_away = 0.0, 0.0, 0.0
-        for hg in range(max_goals + 1):
-            for ag in range(max_goals + 1):
-                tau = _tau(hg, ag, lam_home, lam_away, rho)
-                p = tau * poisson.pmf(hg, lam_home) * poisson.pmf(ag, lam_away)
-                if hg > ag:
-                    prob_home += p
-                elif hg == ag:
-                    prob_draw += p
-                else:
-                    prob_away += p
+        goals = np.arange(max_goals + 1)
+        hg_grid, ag_grid = np.meshgrid(goals, goals, indexing="ij")
+        hg_flat = hg_grid.ravel().astype(float)
+        ag_flat = ag_grid.ravel().astype(float)
 
-        # Normalizza (la somma potrebbe non essere esattamente 1 per via del
-        # taglio a max_goals e della correzione rho)
+        lam_h_arr = np.full_like(hg_flat, lam_home)
+        lam_a_arr = np.full_like(ag_flat, lam_away)
+        tau = _tau_correction(hg_flat, ag_flat, lam_h_arr, lam_a_arr, rho)
+        probs = tau * np.exp(_poisson_logpmf(hg_flat, lam_h_arr) +
+                              _poisson_logpmf(ag_flat, lam_a_arr))
+
+        prob_home = probs[hg_flat > ag_flat].sum()
+        prob_draw = probs[hg_flat == ag_flat].sum()
+        prob_away = probs[hg_flat < ag_flat].sum()
+
         total = prob_home + prob_draw + prob_away
         return prob_home / total, prob_draw / total, prob_away / total
