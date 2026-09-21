@@ -112,8 +112,9 @@ def main():
 
     # 2) Un unico modello "europeo" condiviso, per Champions/Europa/Conference:
     #    combina TUTTE le partite nazionali con le partite di Champions League
-    #    già giocate, che fanno da "ponte" tra campionati diversi che altrimenti
-    #    non avrebbero mai squadre in comune da confrontare.
+    #    già giocate, così il modello riconosce più squadre — utile soprattutto
+    #    per Conference ed Europa League, che coinvolgono squadre di molti
+    #    campionati diversi.
     european_upcoming_present = any(l in leagues for l in EUROPEAN_COMPETITIONS)
     if european_upcoming_present:
         combined_matches = []
@@ -124,7 +125,7 @@ def main():
         combined_matches += bridge_matches
 
         print(f"\nModello europeo (per Champions/Europa/Conference)")
-        print(f"  Partite di collegamento (Champions League già giocate): {len(bridge_matches)}")
+        print(f"  Partite di collegamento (Champions League già giocate quest'anno): {len(bridge_matches)}")
         if len(bridge_matches) < 20:
             print("  Attenzione: poche partite di collegamento finora — il confronto tra "
                   "campionati diversi sarà poco preciso all'inizio della stagione, ma "
