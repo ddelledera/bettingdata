@@ -98,3 +98,48 @@ def combine_parlay(legs):
         "ev": round(ev, 3),
         "kelly_stake_pct": round(stake, 2),
     }
+
+
+def find_best_combination(legs_by_match, num_matches, target_roi):
+    """
+    Trova la combinazione di 'num_matches' partite (una sola selezione
+    per partita, quella migliore disponibile) che raggiunge un ritorno
+    atteso almeno pari a 'target_roi' (es. 1.0 = vuoi raddoppiare i
+    soldi puntati), scegliendo — tra tutte le combinazioni che centrano
+    l'obiettivo — quella con la probabilità combinata più alta, cioè la
+    più "sicura" tra quelle che comunque raggiungono il ritorno voluto.
+
+    legs_by_match: dict {match_id: leg}, un solo leg per partita (già
+        quello migliore per quella partita), ciascuno con almeno "odds"
+        e "model_probability".
+    num_matches: quante partite mettere in combinazione (es. 1-5).
+    target_roi: ritorno desiderato come frazione (es. 1.0 = +100%).
+
+    Ritorna: (combinazione scelta, ha_raggiunto_il_target) oppure None
+    se non ci sono abbastanza partite disponibili per formare la
+    combinazione richiesta.
+    """
+    from itertools import combinations
+    import math
+
+    legs_pool = list(legs_by_match.values())
+    if len(legs_pool) < num_matches:
+        return None
+
+    target_odds = 1 + target_roi
+    best_combo, best_prob = None, -1
+    fallback_combo, fallback_odds = None, -1
+
+    for combo in combinations(legs_pool, num_matches):
+        combined_odds = math.prod(leg["odds"] for leg in combo)
+        combined_prob = math.prod(leg["model_probability"] for leg in combo)
+
+        if combined_odds >= target_odds and combined_prob > best_prob:
+            best_combo, best_prob = combo, combined_prob
+
+        if combined_odds > fallback_odds:
+            fallback_combo, fallback_odds = combo, combined_odds
+
+    if best_combo is not None:
+        return best_combo, True
+    return fallback_combo, False
