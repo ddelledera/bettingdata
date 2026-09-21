@@ -15,6 +15,7 @@ import os
 import sqlite3
 import requests
 from datetime import date, timedelta
+from team_utils import get_or_create_team
 
 DB_PATH = "data.db"
 API_KEY = os.environ.get("FOOTBALL_DATA_API_KEY", "")
@@ -30,27 +31,6 @@ COMPETITION_CODES = {
 }
 
 DAYS_AHEAD = 10  # quante partite future guardare
-
-
-def normalize_team_name(name):
-    """Stessa logica dello script dei dati storici, per far combaciare i nomi."""
-    fixes = {
-        "FC Internazionale Milano": "Inter",
-        "AC Milan": "Milan",
-        "Hellas Verona FC": "Hellas Verona",
-        "Juventus FC": "Juventus",
-    }
-    return fixes.get(name.strip(), name.strip())
-
-
-def get_or_create_team(cur, name):
-    name = normalize_team_name(name)
-    cur.execute("SELECT id FROM teams WHERE name = ?", (name,))
-    row = cur.fetchone()
-    if row:
-        return row[0]
-    cur.execute("INSERT INTO teams (name) VALUES (?)", (name,))
-    return cur.lastrowid
 
 
 def fetch_upcoming(competition_code):
