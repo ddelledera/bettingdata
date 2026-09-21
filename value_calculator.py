@@ -102,16 +102,22 @@ def combine_parlay(legs):
 
 def find_best_combination(legs_by_match, num_matches, target_roi):
     """
-    Trova la combinazione di 'num_matches' partite (una sola selezione
-    per partita, quella migliore disponibile) che raggiunge un ritorno
-    atteso almeno pari a 'target_roi' (es. 1.0 = vuoi raddoppiare i
-    soldi puntati), scegliendo — tra tutte le combinazioni che centrano
-    l'obiettivo — quella con la probabilità combinata più alta, cioè la
-    più "sicura" tra quelle che comunque raggiungono il ritorno voluto.
+    Trova la combinazione di 'num_matches' partite che raggiunge un
+    ritorno atteso almeno pari a 'target_roi' (es. 1.0 = vuoi raddoppiare
+    i soldi puntati), scegliendo — tra TUTTE le combinazioni possibili,
+    considerando anche quale selezione (1/X/2) usare per ciascuna
+    partita — quella con la probabilità combinata più alta, cioè la più
+    "sicura" tra quelle che comunque raggiungono il ritorno voluto.
 
-    legs_by_match: dict {match_id: leg}, un solo leg per partita (già
-        quello migliore per quella partita), ciascuno con almeno "odds"
-        e "model_probability".
+    A differenza di una versione più semplice che fissa in anticipo
+    "la selezione migliore" per ogni partita, qui il rischio entra
+    davvero nella scelta: per una partita può convenire usare una
+    selezione più sicura (quota più bassa) se questo permette di
+    raggiungere l'obiettivo con una combinazione complessiva più solida.
+
+    legs_by_match: dict {match_id: [leg, leg, ...]} — la LISTA delle
+        selezioni disponibili per quella partita (non una sola), ciascuna
+        con almeno "odds" e "model_probability".
     num_matches: quante partite mettere in combinazione (es. 1-5).
     target_roi: ritorno desiderato come frazione (es. 1.0 = +100%).
 
@@ -119,26 +125,28 @@ def find_best_combination(legs_by_match, num_matches, target_roi):
     se non ci sono abbastanza partite disponibili per formare la
     combinazione richiesta.
     """
-    from itertools import combinations
+    from itertools import combinations, product
     import math
 
-    legs_pool = list(legs_by_match.values())
-    if len(legs_pool) < num_matches:
+    match_ids = list(legs_by_match.keys())
+    if len(match_ids) < num_matches:
         return None
 
     target_odds = 1 + target_roi
     best_combo, best_prob = None, -1
     fallback_combo, fallback_odds = None, -1
 
-    for combo in combinations(legs_pool, num_matches):
-        combined_odds = math.prod(leg["odds"] for leg in combo)
-        combined_prob = math.prod(leg["model_probability"] for leg in combo)
+    for match_subset in combinations(match_ids, num_matches):
+        option_lists = [legs_by_match[mid] for mid in match_subset]
+        for combo in product(*option_lists):
+            combined_odds = math.prod(leg["odds"] for leg in combo)
+            combined_prob = math.prod(leg["model_probability"] for leg in combo)
 
-        if combined_odds >= target_odds and combined_prob > best_prob:
-            best_combo, best_prob = combo, combined_prob
+            if combined_odds >= target_odds and combined_prob > best_prob:
+                best_combo, best_prob = combo, combined_prob
 
-        if combined_odds > fallback_odds:
-            fallback_combo, fallback_odds = combo, combined_odds
+            if combined_odds > fallback_odds:
+                fallback_combo, fallback_odds = combo, combined_odds
 
     if best_combo is not None:
         return best_combo, True
