@@ -132,6 +132,16 @@ BOOKMAKER_ITALIA = {"Unibet", "Codere"}
 # anche questo non è garantito al 100% essere l'entità italiana.
 
 
+def competition_filter(matches_df, key):
+    """Mostra un selettore di competizioni (una, più di una, o tutte) e
+    ritorna solo le partite di quelle scelte. Usata in ogni scheda."""
+    available = sorted(matches_df["league"].unique())
+    selected = st.multiselect("Competizione:", options=available, default=available, key=key)
+    if not selected:
+        return matches_df.iloc[0:0]
+    return matches_df[matches_df["league"].isin(selected)]
+
+
 def compute_opportunities(conn, matches_df, min_ev):
     """Calcola tutte le opportunità di valore (quota migliore tra tutti i
     bookmaker), usata dalla scheda principale."""
@@ -184,10 +194,12 @@ tab_opportunita, tab_schedina, tab_simulazione, tab_tutte = st.tabs(
 # SCHEDA 1: Opportunità di valore
 # ---------------------------------------------------------------------------
 with tab_opportunita:
+    filtered_opp = competition_filter(matches_df, key="comp_opportunita")
+
     min_ev = st.slider("Mostra solo scommesse con valore atteso di almeno:",
                         min_value=0, max_value=20, value=3, format="%d%%") / 100
 
-    all_opportunities = compute_opportunities(conn, matches_df, min_ev)
+    all_opportunities = compute_opportunities(conn, filtered_opp, min_ev)
 
     if not all_opportunities:
         st.info("Nessuna scommessa di valore trovata al momento con la soglia scelta. "
@@ -220,11 +232,12 @@ with tab_schedina:
     if not bookmakers:
         st.info("Non ci sono ancora quote salvate per costruire una schedina.")
     else:
+        filtered_sched = competition_filter(matches_df, key="comp_schedina")
         selected_bookmaker = st.selectbox("Scegli il bookmaker:", bookmakers,
                                            format_func=bookmaker_display_label)
 
         candidate_legs = {}  # etichetta leggibile -> dati della selezione
-        for _, row in matches_df.iterrows():
+        for _, row in filtered_sched.iterrows():
             bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker)
             if bm_odds is None:
                 continue  # questo bookmaker non copre questa partita
@@ -278,6 +291,8 @@ with tab_simulazione:
     if not bookmakers_sim:
         st.info("Non ci sono ancora quote salvate per fare una simulazione.")
     else:
+        filtered_sim = competition_filter(matches_df, key="comp_simulazione")
+
         col_a, col_b = st.columns(2)
         with col_a:
             stake = st.number_input("Puntata (€):", min_value=1.0, value=10.0, step=1.0)
@@ -309,7 +324,7 @@ with tab_simulazione:
             # complessiva più solida — il rischio pesa sulla scelta finale,
             # non solo su cosa scartare a monte.
             legs_by_match = {}
-            for _, row in matches_df.iterrows():
+            for _, row in filtered_sim.iterrows():
                 bm_odds = odds_by_bookmaker_for_match(conn, row["id"], sim_bookmaker)
                 if bm_odds is None:
                     continue
@@ -373,11 +388,7 @@ with tab_simulazione:
 # SCHEDA 4: Tutte le partite in arrivo
 # ---------------------------------------------------------------------------
 with tab_tutte:
-    leagues_available = sorted(matches_df["league"].unique())
-    selected_leagues = st.multiselect(
-        "Filtra per campionato:", options=leagues_available, default=leagues_available
-    )
-    filtered_df = matches_df[matches_df["league"].isin(selected_leagues)]
+    filtered_df = competition_filter(matches_df, key="comp_tutte")
     st.dataframe(
         filtered_df[["date", "league", "home", "away", "prob_home", "prob_draw", "prob_away"]]
         .rename(columns={
