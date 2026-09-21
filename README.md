@@ -1,5 +1,7 @@
 # La tua app di previsioni calcio
 
+https://bettingdata-2026.streamlit.app/
+
 Non devi capire il codice qui dentro. Questa guida ti spiega solo i click da
 fare per portare l'app online. Sono due parti: GitHub (dove "vive" il
 progetto) e Streamlit (dove diventa una pagina web vera).
