@@ -10,7 +10,8 @@ Non c'è nulla da capire o configurare qui dentro.
 import sqlite3
 import pandas as pd
 import streamlit as st
-from value_calculator import remove_bookmaker_margin, find_value_bets, combine_parlay
+from value_calculator import remove_bookmaker_margin, find_value_bets, combine_parlay, find_best_combination
+import math
 
 DB_PATH = "data.db"
 
@@ -134,8 +135,8 @@ if matches_df.empty:
              "Torna più tardi, oppure aggiorna i dati.")
     st.stop()
 
-tab_opportunita, tab_schedina, tab_tutte = st.tabs(
-    ["🎯 Opportunità di valore", "🎟️ Schedina", "📋 Tutte le partite"]
+tab_opportunita, tab_schedina, tab_simulazione, tab_tutte = st.tabs(
+    ["🎯 Opportunità di valore", "🎟️ Schedina", "🎲 Simulazione", "📋 Tutte le partite"]
 )
 
 # ---------------------------------------------------------------------------
@@ -221,7 +222,90 @@ with tab_schedina:
                 st.caption("Seleziona una o più partite qui sopra per vedere la schedina combinata.")
 
 # ---------------------------------------------------------------------------
-# SCHEDA 3: Tutte le partite in arrivo
+# SCHEDA 3: Simulazione (trova la combinazione migliore data una puntata,
+# un ritorno desiderato, un bookmaker e un numero di partite)
+# ---------------------------------------------------------------------------
+with tab_simulazione:
+    st.caption(
+        "Dimmi quanto vuoi puntare, il ritorno che cerchi, su quale bookmaker "
+        "e su quante partite: trovo la combinazione più sicura che raggiunge "
+        "l'obiettivo (o quella più vicina possibile, se l'obiettivo è troppo alto)."
+    )
+
+    bookmakers_sim = list_bookmakers(conn)
+    if not bookmakers_sim:
+        st.info("Non ci sono ancora quote salvate per fare una simulazione.")
+    else:
+        col_a, col_b = st.columns(2)
+        with col_a:
+            stake = st.number_input("Puntata (€):", min_value=1.0, value=10.0, step=1.0)
+            sim_bookmaker = st.selectbox("Bookmaker:", bookmakers_sim, key="sim_bookmaker")
+        with col_b:
+            target_roi_pct = st.slider("Ritorno desiderato:", min_value=20, max_value=500,
+                                        value=100, step=10, format="+%d%%")
+            num_matches = st.slider("Numero di partite:", min_value=1, max_value=5, value=3)
+
+        if st.button("🔍 Trova la combinazione migliore"):
+            # per ciascuna partita disponibile su questo bookmaker, teniamo solo
+            # la SUA selezione migliore (non ha senso mettere due esiti della
+            # stessa partita nella stessa schedina)
+            legs_by_match = {}
+            for _, row in matches_df.iterrows():
+                bm_odds = odds_by_bookmaker_for_match(conn, row["id"], sim_bookmaker)
+                if bm_odds is None:
+                    continue
+                model_probs = {"Home": row["prob_home"], "Draw": row["prob_draw"], "Away": row["prob_away"]}
+                candidates = find_value_bets(model_probs, bm_odds, min_ev=-1)  # anche EV negativo: decide l'algoritmo
+                if candidates:
+                    best_leg = dict(candidates[0])
+                    best_leg["match_label"] = f"{row['home']} vs {row['away']}"
+                    best_leg["match_date"] = row["date"]
+                    legs_by_match[row["id"]] = best_leg
+
+            result = find_best_combination(legs_by_match, num_matches, target_roi_pct / 100)
+
+            if result is None:
+                st.warning(f"Non ci sono abbastanza partite disponibili su {sim_bookmaker} "
+                           f"per formare una combinazione di {num_matches} partite.")
+            else:
+                combo, hit_target = result
+                combined_odds = math.prod(leg["odds"] for leg in combo)
+                combined_prob = math.prod(leg["model_probability"] for leg in combo)
+                projected_return = stake * combined_odds
+                projected_profit = projected_return - stake
+
+                if not hit_target:
+                    st.info(f"Non ho trovato una combinazione da {num_matches} partite su "
+                            f"{sim_bookmaker} che raggiunga +{target_roi_pct}% — questa è "
+                            f"quella con il ritorno più alto possibile disponibile ora.")
+                else:
+                    st.success("Trovata una combinazione che raggiunge l'obiettivo:")
+
+                st.subheader("Combinazione proposta")
+                for leg in combo:
+                    esito_label = {"Home": "1 (casa)", "Draw": "X (pareggio)",
+                                    "Away": "2 (trasferta)"}[leg["selection"]]
+                    st.write(f"- **{leg['match_label']}** ({leg['match_date']}) — "
+                             f"{esito_label} @ {leg['odds']} "
+                             f"(nostra prob. {leg['model_probability']:.0%})")
+
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Quota combinata", f"{combined_odds:.2f}")
+                c2.metric("Ritorno stimato", f"€{projected_return:.2f}")
+                c3.metric("Guadagno stimato", f"€{projected_profit:.2f}")
+
+                st.caption(
+                    f"Probabilità combinata secondo il nostro modello: {combined_prob:.1%}. "
+                    "Come per la schedina, questo numero assume partite indipendenti tra loro."
+                )
+                st.info(
+                    "La conferma e il salvataggio automatico di questa schedina (con resoconto "
+                    "a fine partite) arrivano nel prossimo aggiornamento — per ora questa scheda "
+                    "ti aiuta a decidere, il salvataggio lo fai ancora tu a mano se vuoi tenerne traccia."
+                )
+
+# ---------------------------------------------------------------------------
+# SCHEDA 4: Tutte le partite in arrivo
 # ---------------------------------------------------------------------------
 with tab_tutte:
     leagues_available = sorted(matches_df["league"].unique())
