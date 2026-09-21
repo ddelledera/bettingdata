@@ -17,6 +17,7 @@ import os
 import sqlite3
 import requests
 from datetime import datetime, timezone
+from team_utils import normalize_team_name
 
 DB_PATH = "data.db"
 API_KEY = os.environ.get("ODDS_API_KEY", "")
@@ -30,15 +31,6 @@ SPORT_KEYS = {
     "soccer_germany_bundesliga": "Bundesliga",
     "soccer_france_ligue_one": "Ligue 1",
 }
-
-
-def normalize_team_name(name):
-    fixes = {
-        "Inter Milan": "Inter",
-        "AC Milan": "Milan",
-        "Hellas Verona": "Hellas Verona",
-    }
-    return fixes.get(name.strip(), name.strip())
 
 
 def find_match_id(cur, home_name, away_name, match_date):
