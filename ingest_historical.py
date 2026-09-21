@@ -30,9 +30,33 @@ LEAGUE_CODES = {
     "F1": "Ligue 1",
 }
 
-# Stagioni da scaricare, nel formato richiesto dalla fonte (es. "2425" = 2024-25).
-# Aggiungeremo automaticamente la stagione corrente man mano che passa il tempo.
-SEASONS = ["2223", "2324", "2425", "2526"]
+
+def get_current_season_codes(num_seasons=4):
+    """
+    Genera i codici stagione (formato 'YYZZ', es. '2526' per la stagione
+    2025-26) delle ultime 'num_seasons' stagioni, INCLUSA quella in corso.
+
+    Così non serve più aggiornare la lista a mano ogni anno quando inizia
+    una nuova stagione — prima era un elenco fisso che si "dimenticava"
+    automaticamente della stagione più recente, uno dei problemi trovati
+    nella revisione del codice.
+
+    Una stagione di calcio europea va grosso modo da luglio a giugno
+    dell'anno dopo: se siamo tra luglio e dicembre, la stagione in corso
+    è "iniziata quest'anno"; se siamo tra gennaio e giugno, è iniziata
+    l'anno scorso.
+    """
+    today = date.today()
+    current_start_year = today.year if today.month >= 7 else today.year - 1
+    codes = []
+    for i in range(num_seasons):
+        start_year = current_start_year - i
+        end_year = start_year + 1
+        codes.append(f"{str(start_year)[-2:]}{str(end_year)[-2:]}")
+    return list(reversed(codes))  # dal più vecchio al più recente
+
+
+SEASONS = get_current_season_codes(4)
 
 BASE_URL = "https://www.football-data.co.uk/mmz4281/{season}/{league}.csv"
 
