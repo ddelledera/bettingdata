@@ -39,12 +39,23 @@ def load_upcoming_with_predictions(conn):
 
 
 def best_odds_for_match(conn, match_id):
-    """Per ogni esito (1/X/2), trova la quota più alta tra tutti i bookmaker
-    monitorati (line shopping automatico)."""
+    """Per ogni esito (1/X/2), trova la quota più alta tra i bookmaker,
+    usando SOLO l'ultima quota registrata per ciascun bookmaker (non il
+    massimo tra tutti gli snapshot storici mai salvati, che potrebbe non
+    essere più la quota realmente disponibile oggi)."""
     query = """
+        WITH ultima_quota AS (
+            SELECT bookmaker, selection, odds,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY bookmaker, selection
+                       ORDER BY snapshot_time DESC
+                   ) AS rn
+            FROM odds_snapshots
+            WHERE match_id = ?
+        )
         SELECT selection, MAX(odds) as best_odds, bookmaker
-        FROM odds_snapshots
-        WHERE match_id = ?
+        FROM ultima_quota
+        WHERE rn = 1
         GROUP BY selection
     """
     rows = conn.execute(query, (match_id,)).fetchall()
