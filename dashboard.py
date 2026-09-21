@@ -94,15 +94,18 @@ def risk_label(odds):
     return "🔴 Rischio alto"
 
 
-# Bookmaker con licenza ADM (autorizzati in Italia). Se un bookmaker italiano
-# reale non compare in questa lista, va aggiunto qui: potrebbe comparire con
-# un nome leggermente diverso nella fonte delle quote.
-BOOKMAKER_ITALIA = {
-    "Bet365", "Sisal", "Snai", "Eurobet", "Goldbet", "Betflag", "Planetwin365",
-    "Lottomatica", "William Hill", "Betsson", "NetBet", "PokerStars",
-    "AdmiralBet", "Marathonbet", "Marathon Bet", "Bwin", "Betfair", "888sport",
-    "Stake", "Vincitu", "Vincitù", "StarCasino",
-}
+# Bookmaker con licenza ADM (autorizzati in Italia) TRA QUELLI CHE LA NOSTRA
+# FONTE DELLE QUOTE COPRE DAVVERO. Ho controllato l'elenco ufficiale e
+# completo di The Odds API (tutte le regioni: EU, UK, Francia, Svezia,
+# Finlandia): la maggior parte dei bookmaker italiani noti (Eurobet, Snai,
+# Sisal, Lottomatica, Goldbet, Betflag, Planetwin365, AdmiralBet, ecc.)
+# NON sono coperti da questa fonte gratuita, quindi non possiamo mostrarli
+# anche se esistono davvero. Gli unici due esplicitamente etichettati come
+# entità italiane sono questi:
+BOOKMAKER_ITALIA = {"Unibet", "Codere"}
+# Nota: "Unibet" potrebbe in teoria riferirsi anche a Unibet Francia/Olanda/
+# Svezia (la fonte non distingue sempre il paese nel nome mostrato) — quindi
+# anche questo non è garantito al 100% essere l'entità italiana.
 
 
 def compute_opportunities(conn, matches_df, min_ev):
