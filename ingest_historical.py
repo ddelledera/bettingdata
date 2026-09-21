@@ -21,13 +21,19 @@ from team_utils import get_or_create_team
 
 DB_PATH = "data.db"
 
-# Codice-lega usato dalla fonte dati, per ciascun campionato che vogliamo seguire.
+# Codice-lega usato dalla fonte dati, per ciascun campionato che seguiamo.
 LEAGUE_CODES = {
     "I1": "Serie A",
     "E0": "Premier League",
     "SP1": "La Liga",
     "D1": "Bundesliga",
     "F1": "Ligue 1",
+    "N1": "Eredivisie",
+    "B1": "Belgian Pro League",
+    "P1": "Primeira Liga",
+    "T1": "Super Lig",
+    "G1": "Super League Greece",
+    "SC0": "Scottish Premiership",
 }
 
 
