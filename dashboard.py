@@ -78,6 +78,47 @@ h1 { color: #1B4332; font-weight: 700; }
 .leg-odds { text-align: right; min-width: 90px; }
 .leg-odds-value { font-size: 1.35rem; font-weight: 700; color: #1B4332; }
 .leg-odds-prob { font-size: 0.78rem; color: #7A8A81; }
+
+/* Schede "in evidenza" per le migliori opportunità, in cima alla pagina */
+.spot-card {
+    background: linear-gradient(155deg, #1B4332 0%, #163B2B 100%);
+    border-radius: 10px;
+    padding: 20px 22px;
+    color: #F7F9F6;
+    height: 100%;
+}
+.spot-league {
+    font-size: 0.72rem;
+    color: #8FBFA3;
+    font-weight: 600;
+}
+.spot-teams {
+    font-family: 'Oswald', sans-serif !important;
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 4px 0 14px 0;
+    line-height: 1.25;
+}
+.spot-ev-value {
+    font-family: 'Oswald', sans-serif !important;
+    font-size: 2.4rem;
+    font-weight: 700;
+    color: #D4A017;
+    line-height: 1;
+}
+.spot-ev-label {
+    font-size: 0.7rem;
+    color: #8FBFA3;
+    margin-bottom: 12px;
+}
+.spot-details {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    border-top: 1px solid rgba(247, 249, 246, 0.15);
+    padding-top: 10px;
+}
+.spot-details b { color: #F7F9F6; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -235,6 +276,23 @@ def render_leg_row(leg):
     """, unsafe_allow_html=True)
 
 
+def render_spotlight_card(opp):
+    """Disegna una scheda 'in evidenza' per una delle migliori opportunità
+    del momento, con l'EV come numero grande e protagonista."""
+    st.markdown(f"""
+    <div class="spot-card">
+        <div class="spot-league">{opp['Campionato'].upper()}</div>
+        <div class="spot-teams">{opp['Partita']}</div>
+        <div class="spot-ev-value">{opp['Valore atteso (EV)']}</div>
+        <div class="spot-ev-label">valore atteso — {opp['Esito']}</div>
+        <div class="spot-details">
+            <span>Quota <b>{opp['Quota migliore']}</b></span>
+            <span>{opp['Bookmaker']}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def compute_opportunities(conn, matches_df, min_ev):
     """Calcola tutte le opportunità di valore (quota migliore tra tutti i
     bookmaker), usata dalla scheda principale."""
@@ -300,7 +358,17 @@ with tab_opportunita:
     else:
         opp_df = pd.DataFrame(all_opportunities).sort_values("_ev_sort", ascending=False)
         opp_df = opp_df.drop(columns=["_ev_sort"])
-        st.subheader(f"{len(opp_df)} opportunità trovate, ordinate per convenienza")
+
+        top3 = opp_df.head(3).to_dict("records")
+        if top3:
+            st.subheader("Le migliori di oggi")
+            cols = st.columns(len(top3))
+            for col, opp in zip(cols, top3):
+                with col:
+                    render_spotlight_card(opp)
+            st.write("")
+
+        st.subheader(f"Tutte le {len(opp_df)} opportunità, ordinate per convenienza")
         st.dataframe(
             opp_df, width='stretch', hide_index=True,
             column_config={
