@@ -55,10 +55,13 @@ jobs:
       - name: Calcola le nuove previsioni
         run: python run_model.py
 
+      - name: Controlla le schedine confermate
+        run: python check_results.py
+
       - name: Salva i dati aggiornati nel progetto
         run: |
           git config user.name "aggiornamento-automatico"
           git config user.email "actions@github.com"
-          git add data.db
+          git add data.db tracked_slips.json
           git diff --staged --quiet || git commit -m "Aggiornamento dati automatico"
           git push
