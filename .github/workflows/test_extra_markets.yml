@@ -1,0 +1,28 @@
+# Workflow di PROVA, da avviare solo a mano (mai in automatico). Serve solo
+# a controllare il costo reale in crediti dei mercati "doppia chance" e
+# "Goal/No Goal" prima di decidere se aggiungerli per davvero all'app.
+
+name: Test costo mercati aggiuntivi
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica il codice del progetto
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installa le librerie necessarie
+        run: pip install requests
+
+      - name: Esegui il test
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python test_extra_markets_cost.py
