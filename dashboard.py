@@ -49,24 +49,23 @@ h1 { color: #1B4332; font-weight: 700; }
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #FFFFFF;
-    border-left: 5px solid var(--risk-color, #1B4332);
-    border-radius: 4px;
-    padding: 12px 18px;
-    margin-bottom: 8px;
-    box-shadow: 0 1px 2px rgba(27, 67, 50, 0.08);
+    background: linear-gradient(155deg, #1B4332 0%, #163B2B 100%);
+    border-left: 5px solid var(--risk-color, #D4A017);
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin-bottom: 10px;
 }
-.leg-basso { --risk-color: #2D6A4F; }
-.leg-medio { --risk-color: #B08900; }
-.leg-alto  { --risk-color: #A63A3A; }
+.leg-basso { --risk-color: #4CAF7D; }
+.leg-medio { --risk-color: #D4A017; }
+.leg-alto  { --risk-color: #D96C6C; }
 
 .leg-match { flex: 1; }
-.leg-teams { font-size: 1.08rem; font-weight: 600; color: #1A2420; }
-.leg-date { font-size: 0.8rem; color: #7A8A81; margin-top: 1px; }
+.leg-teams { font-size: 1.08rem; font-weight: 600; color: #F7F9F6; }
+.leg-date { font-size: 0.8rem; color: #8FBFA3; margin-top: 1px; }
 
 .leg-pick {
-    background: #EEF3F0;
-    color: #1B4332;
+    background: rgba(247, 249, 246, 0.12);
+    color: #F7F9F6;
     font-weight: 600;
     font-size: 0.85rem;
     padding: 4px 12px;
@@ -76,8 +75,8 @@ h1 { color: #1B4332; font-weight: 700; }
 }
 
 .leg-odds { text-align: right; min-width: 90px; }
-.leg-odds-value { font-size: 1.35rem; font-weight: 700; color: #1B4332; }
-.leg-odds-prob { font-size: 0.78rem; color: #7A8A81; }
+.leg-odds-value { font-size: 1.35rem; font-weight: 700; color: #D4A017; }
+.leg-odds-prob { font-size: 0.78rem; color: #8FBFA3; }
 
 /* Schede "in evidenza" per le migliori opportunità, in cima alla pagina */
 .spot-card {
@@ -119,6 +118,31 @@ h1 { color: #1B4332; font-weight: 700; }
     padding-top: 10px;
 }
 .spot-details b { color: #F7F9F6; }
+
+/* Schede per lo storico delle schedine */
+.slip-card {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    border-left: 5px solid var(--slip-color, #7A8A81);
+    background: #FFFFFF;
+    box-shadow: 0 1px 2px rgba(27, 67, 50, 0.08);
+}
+.slip-pending { --slip-color: #D4A017; }
+.slip-won { --slip-color: #2D6A4F; }
+.slip-lost { --slip-color: #A63A3A; }
+.slip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #1A2420;
+}
+.slip-profit-won { color: #2D6A4F; font-weight: 700; }
+.slip-profit-lost { color: #A63A3A; font-weight: 700; }
+.slip-meta { font-size: 0.82rem; color: #7A8A81; margin-top: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -276,21 +300,66 @@ def render_leg_row(leg):
     """, unsafe_allow_html=True)
 
 
+RISK_COLORS = {"leg-basso": "#4CAF7D", "leg-medio": "#D4A017", "leg-alto": "#D96C6C"}
+RISK_TEXT = {"leg-basso": "rischio basso", "leg-medio": "rischio medio", "leg-alto": "rischio alto"}
+
+
+def risk_badge_html(odds):
+    """Piccola etichetta colorata per il livello di rischio, da inserire in una scheda."""
+    cls = risk_css_class(odds)
+    return f'<span style="color:{RISK_COLORS[cls]}; font-weight:600;">● {RISK_TEXT[cls]}</span>'
+
+
 def render_spotlight_card(opp):
-    """Disegna una scheda 'in evidenza' per una delle migliori opportunità
-    del momento, con l'EV come numero grande e protagonista."""
+    """Disegna una scheda per un'opportunità di valore, con l'EV come numero
+    grande e protagonista, e tutti i dettagli utili sotto."""
     st.markdown(f"""
     <div class="spot-card">
         <div class="spot-league">{opp['Campionato'].upper()}</div>
         <div class="spot-teams">{opp['Partita']}</div>
         <div class="spot-ev-value">{opp['Valore atteso (EV)']}</div>
-        <div class="spot-ev-label">valore atteso — {opp['Esito']}</div>
+        <div class="spot-ev-label">valore atteso — {opp['Esito']} · prob. modello {opp['Nostra probabilità']:.0f}%</div>
         <div class="spot-details">
             <span>Quota <b>{opp['Quota migliore']}</b></span>
             <span>{opp['Bookmaker']}</span>
         </div>
+        <div class="spot-details" style="margin-top:6px; border-top:none; padding-top:0;">
+            {risk_badge_html(opp['Quota migliore'])}
+            <span>Punta <b>{opp['Puntata consigliata']}</b></span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
+
+
+def render_slip_card(slip):
+    """Disegna una scheda per una voce dello storico: in attesa, vinta o persa."""
+    legs_desc = ", ".join(l["match_label"] for l in slip["legs"])
+    if slip["status"] == "pending":
+        st.markdown(f"""
+        <div class="slip-card slip-pending">
+            <div class="slip-header"><span>🕒 {slip['stake']}€ @ {slip['combined_odds']} · {slip['bookmaker']}</span></div>
+            <div class="slip-meta">{legs_desc}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        esito = slip["result_summary"]
+        won = slip["status"] == "won"
+        icona = "✅" if won else "❌"
+        profit_class = "slip-profit-won" if won else "slip-profit-lost"
+        st.markdown(f"""
+        <div class="slip-card {'slip-won' if won else 'slip-lost'}">
+            <div class="slip-header">
+                <span>{icona} {slip['stake']}€ @ {slip['combined_odds']} · {slip['bookmaker']}</span>
+                <span class="{profit_class}">€{esito['profit']:+.2f}</span>
+            </div>
+            <div class="slip-meta">{legs_desc}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        with st.expander("Dettaglio"):
+            for leg in esito["legs"]:
+                check = "✔️" if leg["won"] else "✖️"
+                st.write(f"{check} {leg['match_label']} — puntato: {leg['selection']}, "
+                         f"risultato vero: {leg['actual_result']}")
 
 
 def compute_opportunities(conn, matches_df, min_ev):
@@ -359,24 +428,16 @@ with tab_opportunita:
         opp_df = pd.DataFrame(all_opportunities).sort_values("_ev_sort", ascending=False)
         opp_df = opp_df.drop(columns=["_ev_sort"])
 
-        top3 = opp_df.head(3).to_dict("records")
-        if top3:
-            st.subheader("Le migliori di oggi")
-            cols = st.columns(len(top3))
-            for col, opp in zip(cols, top3):
+        st.subheader(f"{len(opp_df)} opportunità trovate, ordinate per convenienza")
+
+        records = opp_df.to_dict("records")
+        for i in range(0, len(records), 3):
+            row_chunk = records[i:i + 3]
+            cols = st.columns(3)
+            for col, opp in zip(cols, row_chunk):
                 with col:
                     render_spotlight_card(opp)
             st.write("")
-
-        st.subheader(f"Tutte le {len(opp_df)} opportunità, ordinate per convenienza")
-        st.dataframe(
-            opp_df, width='stretch', hide_index=True,
-            column_config={
-                "Nostra probabilità": st.column_config.ProgressColumn(
-                    "Nostra probabilità", format="%.0f%%", min_value=0, max_value=100,
-                ),
-            },
-        )
 
         st.caption(
             "Il 'valore atteso' è quanto ti aspetti di guadagnare in media, su tante "
@@ -594,24 +655,14 @@ with tab_storico:
         if not pending:
             st.caption("Nessuna schedina in attesa al momento.")
         for slip in sorted(pending, key=lambda s: s["created_at"], reverse=True):
-            legs_desc = ", ".join(l["match_label"] for l in slip["legs"])
-            st.write(f"🕒 **{slip['stake']}€ @ {slip['combined_odds']}** su {slip['bookmaker']} "
-                     f"— {legs_desc}")
+            render_slip_card(slip)
 
         st.divider()
         st.subheader(f"Concluse ({len(settled)})")
         if not settled:
             st.caption("Nessuna schedina ancora conclusa.")
         for slip in sorted(settled, key=lambda s: s.get("settled_at", ""), reverse=True):
-            esito = slip["result_summary"]
-            icona = "✅" if slip["status"] == "won" else "❌"
-            st.write(f"{icona} **{slip['stake']}€ @ {slip['combined_odds']}** su {slip['bookmaker']} "
-                     f"— profitto: **€{esito['profit']:+.2f}**")
-            with st.expander("Dettaglio"):
-                for leg in esito["legs"]:
-                    check = "✔️" if leg["won"] else "✖️"
-                    st.write(f"{check} {leg['match_label']} — puntato: {leg['selection']}, "
-                             f"risultato vero: {leg['actual_result']}")
+            render_slip_card(slip)
 
         if settled:
             total_staked = sum(s["stake"] for s in settled)
