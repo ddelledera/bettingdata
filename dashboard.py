@@ -33,6 +33,54 @@ def get_github_token():
         return None
 
 st.set_page_config(page_title="Previsioni Calcio", page_icon="⚽", layout="wide")
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap');
+
+h1, h2, h3, .leg-teams, .leg-odds-value {
+    font-family: 'Oswald', sans-serif !important;
+    letter-spacing: 0.2px;
+}
+h1 { color: #1B4332; font-weight: 700; }
+
+/* Riga "tabellone" per ogni partita di una schedina */
+.leg-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #FFFFFF;
+    border-left: 5px solid var(--risk-color, #1B4332);
+    border-radius: 4px;
+    padding: 12px 18px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 2px rgba(27, 67, 50, 0.08);
+}
+.leg-basso { --risk-color: #2D6A4F; }
+.leg-medio { --risk-color: #B08900; }
+.leg-alto  { --risk-color: #A63A3A; }
+
+.leg-match { flex: 1; }
+.leg-teams { font-size: 1.08rem; font-weight: 600; color: #1A2420; }
+.leg-date { font-size: 0.8rem; color: #7A8A81; margin-top: 1px; }
+
+.leg-pick {
+    background: #EEF3F0;
+    color: #1B4332;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin: 0 16px;
+    white-space: nowrap;
+}
+
+.leg-odds { text-align: right; min-width: 90px; }
+.leg-odds-value { font-size: 1.35rem; font-weight: 700; color: #1B4332; }
+.leg-odds-prob { font-size: 0.78rem; color: #7A8A81; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("⚽ Le mie previsioni calcio")
 st.caption("Partite in arrivo ordinate per convenienza, con quota migliore e puntata consigliata.")
 
@@ -159,6 +207,34 @@ def competition_filter(matches_df, key):
     return matches_df[matches_df["league"].isin(selected)]
 
 
+def risk_css_class(odds):
+    """Classe CSS corrispondente al livello di rischio, per colorare il bordo della riga."""
+    if odds <= 1.8:
+        return "leg-basso"
+    elif odds <= 3.0:
+        return "leg-medio"
+    return "leg-alto"
+
+
+def render_leg_row(leg):
+    """Disegna una partita della schedina come riga del 'tabellone', con squadre,
+    esito scelto, quota e probabilità del modello ben distinti visivamente."""
+    esito_label = {"Home": "1 · casa", "Draw": "X · pareggio", "Away": "2 · trasferta"}[leg["selection"]]
+    st.markdown(f"""
+    <div class="leg-row {risk_css_class(leg['odds'])}">
+        <div class="leg-match">
+            <div class="leg-teams">{leg['match_label']}</div>
+            <div class="leg-date">{leg['match_date']}</div>
+        </div>
+        <div class="leg-pick">{esito_label}</div>
+        <div class="leg-odds">
+            <div class="leg-odds-value">{leg['odds']}</div>
+            <div class="leg-odds-prob">prob. modello {leg['model_probability']:.0%}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def compute_opportunities(conn, matches_df, min_ev):
     """Calcola tutte le opportunità di valore (quota migliore tra tutti i
     bookmaker), usata dalla scheda principale."""
@@ -178,7 +254,7 @@ def compute_opportunities(conn, matches_df, min_ev):
                 "Campionato": row["league"],
                 "Data": row["date"],
                 "Esito": {"Home": "1 (casa)", "Draw": "X (pareggio)", "Away": "2 (trasferta)"}[vb["selection"]],
-                "Nostra probabilità": f"{vb['model_probability']:.0%}",
+                "Nostra probabilità": round(vb["model_probability"] * 100, 1),
                 "Quota migliore": vb["odds"],
                 "Bookmaker": best_bookmaker[vb["selection"]],
                 "Valore atteso (EV)": f"{vb['ev']:+.1%}",
@@ -225,7 +301,14 @@ with tab_opportunita:
         opp_df = pd.DataFrame(all_opportunities).sort_values("_ev_sort", ascending=False)
         opp_df = opp_df.drop(columns=["_ev_sort"])
         st.subheader(f"{len(opp_df)} opportunità trovate, ordinate per convenienza")
-        st.dataframe(opp_df, width='stretch', hide_index=True)
+        st.dataframe(
+            opp_df, width='stretch', hide_index=True,
+            column_config={
+                "Nostra probabilità": st.column_config.ProgressColumn(
+                    "Nostra probabilità", format="%.0f%%", min_value=0, max_value=100,
+                ),
+            },
+        )
 
         st.caption(
             "Il 'valore atteso' è quanto ti aspetti di guadagnare in media, su tante "
@@ -368,12 +451,7 @@ with tab_schedina:
 
             st.subheader("Combinazione")
             for leg in combo:
-                esito_label = {"Home": "1 (casa)", "Draw": "X (pareggio)",
-                                "Away": "2 (trasferta)"}[leg["selection"]]
-                st.write(f"- **{leg['match_label']}** ({leg['match_date']}) — "
-                         f"{esito_label} @ {leg['odds']} "
-                         f"(nostra prob. {leg['model_probability']:.0%}) "
-                         f"— {risk_label(leg['odds'])}")
+                render_leg_row(leg)
 
             c1, c2, c3 = st.columns(3)
             c1.metric("Quota combinata", f"{combined_odds:.2f}")
@@ -430,7 +508,7 @@ with tab_storico:
     github_token = get_github_token()
     if github_token is None:
         st.info(
-            "Questa scheda mostra le schedine che confermi nella scheda Simulazione, "
+            "Questa scheda mostra le schedine che confermi nella scheda Schedina, "
             "con il resoconto automatico una volta finite le partite. Per attivarla "
             "serve collegare un token GitHub — vedi le istruzioni che ti ho dato."
         )
