@@ -679,11 +679,33 @@ with tab_storico:
 # ---------------------------------------------------------------------------
 with tab_tutte:
     filtered_df = competition_filter(matches_df, key="comp_tutte")
+
+    display_df = filtered_df.copy()
+    # Doppia chance: somma delle probabilità del modello per due esiti insieme.
+    # Nessun costo, nessuna nuova quota: sono solo i numeri che già abbiamo,
+    # sommati in modo diverso.
+    display_df["prob_1x"] = (display_df["prob_home"] + display_df["prob_draw"]) * 100
+    display_df["prob_x2"] = (display_df["prob_draw"] + display_df["prob_away"]) * 100
+    display_df["prob_12"] = (display_df["prob_home"] + display_df["prob_away"]) * 100
+    for col in ["prob_home", "prob_draw", "prob_away"]:
+        display_df[col] = display_df[col] * 100
+
+    percent_cols = ["Prob. 1", "Prob. X", "Prob. 2", "Prob. 1X", "Prob. X2", "Prob. 12"]
     st.dataframe(
-        filtered_df[["date", "league", "home", "away", "prob_home", "prob_draw", "prob_away"]]
+        display_df[["date", "league", "home", "away", "prob_home", "prob_draw", "prob_away",
+                     "prob_1x", "prob_x2", "prob_12"]]
         .rename(columns={
             "date": "Data", "league": "Campionato", "home": "Casa", "away": "Trasferta",
             "prob_home": "Prob. 1", "prob_draw": "Prob. X", "prob_away": "Prob. 2",
+            "prob_1x": "Prob. 1X", "prob_x2": "Prob. X2", "prob_12": "Prob. 12",
         }),
         width='stretch', hide_index=True,
+        column_config={col: st.column_config.NumberColumn(col, format="%.0f%%") for col in percent_cols},
+    )
+    st.caption(
+        "1X = vittoria casa o pareggio · X2 = pareggio o vittoria trasferta · "
+        "12 = vittoria di una delle due squadre (esclude il pareggio). "
+        "Sono le nostre probabilità di modello — qui non abbiamo ancora le quote "
+        "reali dei bookmaker per questi mercati, quindi non possiamo dirti se sono "
+        "convenienti, solo quanto le riteniamo probabili."
     )
