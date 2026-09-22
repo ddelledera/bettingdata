@@ -142,7 +142,7 @@ h1 { color: #1B4332; font-weight: 700; }
 }
 .slip-profit-won { color: #2D6A4F; font-weight: 700; }
 .slip-profit-lost { color: #A63A3A; font-weight: 700; }
-.slip-meta { font-size: 0.82rem; color: #7A8A81; margin-top: 4px; }
+.slip-meta { font-size: 0.82rem; color: #6B7972; margin-top: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -283,7 +283,9 @@ def risk_css_class(odds):
 
 def render_leg_row(leg):
     """Disegna una partita della schedina come riga del 'tabellone', con squadre,
-    esito scelto, quota e probabilità del modello ben distinti visivamente."""
+    esito scelto, quota e probabilità del modello ben distinti visivamente.
+    Il livello di rischio è indicato sia dal colore del bordo sia da
+    un'etichetta di testo, per chi non riesce a distinguere bene i colori."""
     esito_label = {"Home": "1 · casa", "Draw": "X · pareggio", "Away": "2 · trasferta"}[leg["selection"]]
     st.markdown(f"""
     <div class="leg-row {risk_css_class(leg['odds'])}">
@@ -295,12 +297,13 @@ def render_leg_row(leg):
         <div class="leg-odds">
             <div class="leg-odds-value">{leg['odds']}</div>
             <div class="leg-odds-prob">prob. modello {leg['model_probability']:.0%}</div>
+            <div style="font-size:0.72rem; margin-top:2px;">{risk_badge_html(leg['odds'])}</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
 
-RISK_COLORS = {"leg-basso": "#4CAF7D", "leg-medio": "#D4A017", "leg-alto": "#D96C6C"}
+RISK_COLORS = {"leg-basso": "#5EB78A", "leg-medio": "#D4A017", "leg-alto": "#E28F8F"}
 RISK_TEXT = {"leg-basso": "rischio basso", "leg-medio": "rischio medio", "leg-alto": "rischio alto"}
 
 
