@@ -30,7 +30,8 @@ COMPETITION_CODES = {
     "FL1": "Ligue 1",
 }
 
-DAYS_AHEAD = 10  # quante partite future guardare
+DAYS_AHEAD = 21  # quante partite future guardare (abbastanza da superare le
+                  # soste per le nazionali, che durano fino a 2 settimane)
 
 
 def fetch_upcoming(competition_code):
