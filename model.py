@@ -14,9 +14,15 @@ Include anche una piccola correzione (la parte "Dixon-Coles" vera e propria)
 che aggiusta le stime per i risultati bassi (0-0, 1-0, 0-1, 1-1), perché il
 semplice modello di Poisson tende a sbagliarli leggermente.
 
-NOTA TECNICA: i calcoli sono scritti in forma "vettoriale" (con numpy),
-cioè elaborano tutte le partite in un colpo solo invece che una alla volta.
-È lo stesso identico modello di prima, solo molto più veloce da allenare.
+NOTA TECNICA SULLA VELOCITÀ: l'allenamento funziona calcolando ripetutamente
+"quanto siamo lontani dal risultato giusto" e aggiustando i voti delle
+squadre di conseguenza. Con centinaia di squadre (17 campionati insieme, nel
+modello europeo), calcolare la direzione giusta "per tentativi" — cambiando
+un voto alla volta e vedendo cosa succede — diventa lentissimo: servirebbe
+un tentativo per ciascuna delle centinaia di squadre, ad ogni passo.
+Per questo qui la direzione giusta è calcolata con una formula esatta
+(il "gradiente analitico"), invece che per tentativi — stesso risultato,
+molto più veloce, indipendentemente da quante squadre ci sono.
 """
 
 import numpy as np
@@ -64,8 +70,6 @@ class DixonColesModel:
         n = len(self.teams)
         team_idx = {t: i for i, t in enumerate(self.teams)}
 
-        # Precalcolo tutti gli array una sola volta (non ad ogni tentativo
-        # dell'ottimizzatore): è qui che si guadagna la velocità.
         home_i = np.array([team_idx[m["home_team"]] for m in matches])
         away_i = np.array([team_idx[m["away_team"]] for m in matches])
         home_g = np.array([m["home_goals"] for m in matches], dtype=float)
@@ -74,7 +78,7 @@ class DixonColesModel:
 
         x0 = np.concatenate([np.zeros(n), np.zeros(n), [0.1, -0.05]])
 
-        def neg_log_likelihood(x):
+        def neg_log_likelihood_and_grad(x):
             attack = x[:n]
             defense = x[n:2 * n]
             home_adv = x[2 * n]
@@ -89,14 +93,63 @@ class DixonColesModel:
             ll = weights * (np.log(tau) +
                              _poisson_logpmf(home_g, lam_home) +
                              _poisson_logpmf(away_g, lam_away))
-            return -np.sum(ll)
+            nll = -np.sum(ll)
+
+            # Derivate di log(tau) rispetto a lam_home, lam_away, rho — solo
+            # per le partite a basso punteggio dove la correzione si applica
+            # davvero (per tutte le altre è 0, come tau stesso vale 1).
+            dlogtau_dlamh = np.zeros_like(lam_home)
+            dlogtau_dlama = np.zeros_like(lam_away)
+            dlogtau_drho = np.zeros_like(lam_home)
+
+            m00 = (home_g == 0) & (away_g == 0)
+            m01 = (home_g == 0) & (away_g == 1)
+            m10 = (home_g == 1) & (away_g == 0)
+            m11 = (home_g == 1) & (away_g == 1)
+
+            dlogtau_dlamh[m00] = -lam_away[m00] * rho / tau[m00]
+            dlogtau_dlama[m00] = -lam_home[m00] * rho / tau[m00]
+            dlogtau_drho[m00] = -lam_home[m00] * lam_away[m00] / tau[m00]
+
+            dlogtau_dlamh[m01] = rho / tau[m01]
+            dlogtau_drho[m01] = lam_home[m01] / tau[m01]
+
+            dlogtau_dlama[m10] = rho / tau[m10]
+            dlogtau_drho[m10] = lam_away[m10] / tau[m10]
+
+            dlogtau_drho[m11] = -1.0 / tau[m11]
+
+            # Derivata della log-verosimiglianza rispetto ai "log-gol attesi"
+            # di ciascuna partita (somma del contributo standard di Poisson
+            # più il contributo della correzione Dixon-Coles).
+            dll_dxh = weights * ((home_g - lam_home) + lam_home * dlogtau_dlamh)
+            dll_dxa = weights * ((away_g - lam_away) + lam_away * dlogtau_dlama)
+            dll_drho = np.sum(weights * dlogtau_drho)
+
+            grad = np.zeros_like(x)
+            np.add.at(grad, home_i, dll_dxh)            # attacco della squadra di casa
+            np.add.at(grad, n + away_i, -dll_dxh)        # difesa della squadra ospite
+            grad[2 * n] += np.sum(dll_dxh)               # vantaggio del fattore campo
+
+            np.add.at(grad, away_i, dll_dxa)             # attacco della squadra ospite
+            np.add.at(grad, n + home_i, -dll_dxa)        # difesa della squadra di casa
+
+            grad[2 * n + 1] = dll_drho                   # correzione Dixon-Coles
+
+            return nll, -grad  # neghiamo: stiamo minimizzando, non massimizzando
 
         # Vincolo: la somma delle forze d'attacco è fissata a 0 (altrimenti il
         # modello ha infinite soluzioni equivalenti: serve un punto di riferimento).
-        constraints = {"type": "eq", "fun": lambda x: np.sum(x[:n])}
+        constraint_jac = np.concatenate([np.ones(n), np.zeros(n), [0, 0]])
+        constraints = {
+            "type": "eq",
+            "fun": lambda x: np.sum(x[:n]),
+            "jac": lambda x: constraint_jac,
+        }
 
-        result = minimize(neg_log_likelihood, x0, constraints=constraints,
-                           method="SLSQP", options={"maxiter": 200, "ftol": 1e-8})
+        result = minimize(neg_log_likelihood_and_grad, x0, jac=True,
+                           constraints=constraints, method="SLSQP",
+                           options={"maxiter": 200, "ftol": 1e-8})
 
         attack = result.x[:n]
         defense = result.x[n:2 * n]
