@@ -34,6 +34,14 @@ LEAGUE_CODES = {
     "T1": "Super Lig",
     "G1": "Super League Greece",
     "SC0": "Scottish Premiership",
+    # Seconde divisioni degli stessi paesi: spesso le squadre di Conference
+    # League vengono proprio da qui (es. Sunderland gioca in Championship).
+    "E1": "Championship",
+    "I2": "Serie B",
+    "SP2": "Segunda Division",
+    "D2": "2. Bundesliga",
+    "F2": "Ligue 2",
+    "SC1": "Scottish Championship",
 }
 
 
