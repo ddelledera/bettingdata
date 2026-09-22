@@ -11,9 +11,26 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 from value_calculator import remove_bookmaker_margin, find_value_bets, combine_parlay, find_best_combination
+from github_storage import read_json_file, write_json_file
 import math
+import uuid
+from datetime import datetime, timezone
 
 DB_PATH = "data.db"
+
+# Repository dove sono salvate le schedine confermate (lo stesso di questo
+# progetto) — se un giorno cambi nome al repository o account, va aggiornato qui.
+GITHUB_OWNER = "ddelledera"
+GITHUB_REPO = "bettingdata"
+SLIPS_PATH = "tracked_slips.json"
+
+
+def get_github_token():
+    """Legge il token GitHub dai 'secrets' della pagina web, se configurato."""
+    try:
+        return st.secrets["GITHUB_TOKEN"]
+    except Exception:
+        return None
 
 st.set_page_config(page_title="Previsioni Calcio", page_icon="⚽", layout="wide")
 st.title("⚽ Le mie previsioni calcio")
@@ -186,8 +203,8 @@ if matches_df.empty:
              "Torna più tardi, oppure aggiorna i dati.")
     st.stop()
 
-tab_opportunita, tab_schedina, tab_simulazione, tab_tutte = st.tabs(
-    ["🎯 Opportunità di valore", "🎟️ Schedina", "🎲 Simulazione", "📋 Tutte le partite"]
+tab_opportunita, tab_schedina, tab_simulazione, tab_storico, tab_tutte = st.tabs(
+    ["🎯 Opportunità di valore", "🎟️ Schedina", "🎲 Simulazione", "📊 Storico schedine", "📋 Tutte le partite"]
 )
 
 # ---------------------------------------------------------------------------
@@ -334,6 +351,7 @@ with tab_simulazione:
                               if risk_order[risk_label(c["odds"])] <= max_risk_level]
                 if candidates:
                     for c in candidates:
+                        c["match_id"] = row["id"]
                         c["match_label"] = f"{row['home']} vs {row['away']}"
                         c["match_date"] = row["date"]
                     legs_by_match[row["id"]] = candidates
@@ -341,51 +359,147 @@ with tab_simulazione:
             result = find_best_combination(legs_by_match, num_matches, target_roi_pct / 100)
 
             if result is None:
+                st.session_state.pop("sim_result", None)
                 st.warning(f"Non ci sono abbastanza partite disponibili su {sim_bookmaker} "
                            f"(con il rischio scelto) per formare una combinazione di "
                            f"{num_matches} partite. Prova ad allargare il rischio massimo, "
                            f"o riduci il numero di partite.")
             else:
                 combo, hit_target = result
-                combined_odds = math.prod(leg["odds"] for leg in combo)
-                combined_prob = math.prod(leg["model_probability"] for leg in combo)
-                projected_return = stake * combined_odds
-                projected_profit = projected_return - stake
+                # Salviamo il risultato nella memoria di sessione: senza questo,
+                # cliccare "Conferma" qui sotto (che ricarica la pagina) farebbe
+                # sparire la combinazione appena trovata.
+                st.session_state["sim_result"] = {
+                    "combo": combo, "hit_target": hit_target, "stake": stake,
+                    "bookmaker": sim_bookmaker, "target_roi_pct": target_roi_pct,
+                }
 
-                if not hit_target:
-                    st.info(f"Non ho trovato una combinazione da {num_matches} partite su "
-                            f"{sim_bookmaker} (con il rischio scelto) che raggiunga "
-                            f"+{target_roi_pct}% — questa è quella con il ritorno più alto "
-                            f"possibile disponibile ora.")
-                else:
-                    st.success("Trovata una combinazione che raggiunge l'obiettivo:")
+        if "sim_result" in st.session_state:
+            sim = st.session_state["sim_result"]
+            combo = sim["combo"]
+            combined_odds = math.prod(leg["odds"] for leg in combo)
+            combined_prob = math.prod(leg["model_probability"] for leg in combo)
+            projected_return = sim["stake"] * combined_odds
+            projected_profit = projected_return - sim["stake"]
 
-                st.subheader("Combinazione proposta")
-                for leg in combo:
-                    esito_label = {"Home": "1 (casa)", "Draw": "X (pareggio)",
-                                    "Away": "2 (trasferta)"}[leg["selection"]]
-                    st.write(f"- **{leg['match_label']}** ({leg['match_date']}) — "
-                             f"{esito_label} @ {leg['odds']} "
-                             f"(nostra prob. {leg['model_probability']:.0%}) "
-                             f"— {risk_label(leg['odds'])}")
+            if not sim["hit_target"]:
+                st.info(f"Non ho trovato una combinazione che raggiunga "
+                        f"+{sim['target_roi_pct']}% — questa è quella con il ritorno "
+                        f"più alto possibile disponibile ora.")
+            else:
+                st.success("Trovata una combinazione che raggiunge l'obiettivo:")
 
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Quota combinata", f"{combined_odds:.2f}")
-                c2.metric("Ritorno stimato", f"€{projected_return:.2f}")
-                c3.metric("Guadagno stimato", f"€{projected_profit:.2f}")
+            st.subheader("Combinazione proposta")
+            for leg in combo:
+                esito_label = {"Home": "1 (casa)", "Draw": "X (pareggio)",
+                                "Away": "2 (trasferta)"}[leg["selection"]]
+                st.write(f"- **{leg['match_label']}** ({leg['match_date']}) — "
+                         f"{esito_label} @ {leg['odds']} "
+                         f"(nostra prob. {leg['model_probability']:.0%}) "
+                         f"— {risk_label(leg['odds'])}")
 
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Quota combinata", f"{combined_odds:.2f}")
+            c2.metric("Ritorno stimato", f"€{projected_return:.2f}")
+            c3.metric("Guadagno stimato", f"€{projected_profit:.2f}")
+
+            st.caption(
+                f"Probabilità combinata secondo il nostro modello: {combined_prob:.1%}. "
+                "Come per la schedina, questo numero assume partite indipendenti tra loro."
+            )
+
+            github_token = get_github_token()
+            if github_token is None:
                 st.caption(
-                    f"Probabilità combinata secondo il nostro modello: {combined_prob:.1%}. "
-                    "Come per la schedina, questo numero assume partite indipendenti tra loro."
+                    "Per confermare e salvare questa schedina (con resoconto automatico "
+                    "a fine partite) serve collegare un token GitHub — vedi le istruzioni "
+                    "che ti ho dato per attivarlo."
                 )
-                st.info(
-                    "La conferma e il salvataggio automatico di questa schedina (con resoconto "
-                    "a fine partite) arrivano nel prossimo aggiornamento — per ora questa scheda "
-                    "ti aiuta a decidere, il salvataggio lo fai ancora tu a mano se vuoi tenerne traccia."
-                )
+            else:
+                if st.button("✅ Conferma questa schedina", key="confirm_slip_btn"):
+                    slip = {
+                        "id": str(uuid.uuid4()),
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "bookmaker": sim["bookmaker"],
+                        "stake": sim["stake"],
+                        "target_roi_pct": sim["target_roi_pct"],
+                        "status": "pending",
+                        "combined_odds": round(combined_odds, 3),
+                        "legs": [
+                            {"match_id": leg["match_id"], "match_label": leg["match_label"],
+                             "match_date": leg["match_date"], "selection": leg["selection"],
+                             "odds": leg["odds"], "model_probability": leg["model_probability"]}
+                            for leg in combo
+                        ],
+                    }
+                    try:
+                        slips, sha = read_json_file(GITHUB_OWNER, GITHUB_REPO, SLIPS_PATH,
+                                                      github_token, default=[])
+                        slips.append(slip)
+                        write_json_file(GITHUB_OWNER, GITHUB_REPO, SLIPS_PATH, github_token,
+                                         slips, sha,
+                                         f"Nuova schedina confermata ({len(slip['legs'])} partite)")
+                        st.success("Schedina salvata! La trovi nella scheda 'Storico schedine'.")
+                        del st.session_state["sim_result"]
+                    except Exception as e:
+                        st.error(f"Non sono riuscito a salvare la schedina: {e}")
 
 # ---------------------------------------------------------------------------
-# SCHEDA 4: Tutte le partite in arrivo
+# SCHEDA 4: Storico schedine confermate
+# ---------------------------------------------------------------------------
+with tab_storico:
+    github_token = get_github_token()
+    if github_token is None:
+        st.info(
+            "Questa scheda mostra le schedine che confermi nella scheda Simulazione, "
+            "con il resoconto automatico una volta finite le partite. Per attivarla "
+            "serve collegare un token GitHub — vedi le istruzioni che ti ho dato."
+        )
+    else:
+        try:
+            slips, _ = read_json_file(GITHUB_OWNER, GITHUB_REPO, SLIPS_PATH, github_token, default=[])
+        except Exception as e:
+            st.error(f"Non sono riuscito a leggere lo storico: {e}")
+            slips = []
+
+        pending = [s for s in slips if s.get("status") == "pending"]
+        settled = [s for s in slips if s.get("status") in ("won", "lost")]
+
+        st.subheader(f"In attesa ({len(pending)})")
+        if not pending:
+            st.caption("Nessuna schedina in attesa al momento.")
+        for slip in sorted(pending, key=lambda s: s["created_at"], reverse=True):
+            legs_desc = ", ".join(l["match_label"] for l in slip["legs"])
+            st.write(f"🕒 **{slip['stake']}€ @ {slip['combined_odds']}** su {slip['bookmaker']} "
+                     f"— {legs_desc}")
+
+        st.divider()
+        st.subheader(f"Concluse ({len(settled)})")
+        if not settled:
+            st.caption("Nessuna schedina ancora conclusa.")
+        for slip in sorted(settled, key=lambda s: s.get("settled_at", ""), reverse=True):
+            esito = slip["result_summary"]
+            icona = "✅" if slip["status"] == "won" else "❌"
+            st.write(f"{icona} **{slip['stake']}€ @ {slip['combined_odds']}** su {slip['bookmaker']} "
+                     f"— profitto: **€{esito['profit']:+.2f}**")
+            with st.expander("Dettaglio"):
+                for leg in esito["legs"]:
+                    check = "✔️" if leg["won"] else "✖️"
+                    st.write(f"{check} {leg['match_label']} — puntato: {leg['selection']}, "
+                             f"risultato vero: {leg['actual_result']}")
+
+        if settled:
+            total_staked = sum(s["stake"] for s in settled)
+            total_profit = sum(s["result_summary"]["profit"] for s in settled)
+            wins = sum(1 for s in settled if s["status"] == "won")
+            st.divider()
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Schedine vinte", f"{wins}/{len(settled)}")
+            c2.metric("Totale puntato", f"€{total_staked:.2f}")
+            c3.metric("Profitto totale", f"€{total_profit:+.2f}")
+
+# ---------------------------------------------------------------------------
+# SCHEDA 5: Tutte le partite in arrivo
 # ---------------------------------------------------------------------------
 with tab_tutte:
     filtered_df = competition_filter(matches_df, key="comp_tutte")
