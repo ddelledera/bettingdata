@@ -143,11 +143,83 @@ h1 { color: #1B4332; font-weight: 700; }
 .slip-profit-won { color: #2D6A4F; font-weight: 700; }
 .slip-profit-lost { color: #A63A3A; font-weight: 700; }
 .slip-meta { font-size: 0.82rem; color: #6B7972; margin-top: 4px; }
+
+/* Intestazione con banda colorata, invece del titolo semplice */
+.app-header {
+    background: linear-gradient(135deg, #1B4332 0%, #163B2B 100%);
+    margin: -3.5rem -4rem 1.8rem -4rem;
+    padding: 2.2rem 4rem 1.6rem 4rem;
+}
+.app-header h1 {
+    color: #F7F9F6 !important;
+    margin: 0 0 0.2rem 0 !important;
+    font-size: 2.1rem !important;
+}
+.app-header p {
+    color: #8FBFA3;
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+/* Schede (tab) più marcate, come una vera navigazione da app */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    gap: 4px;
+    border-bottom: 2px solid #E2E8E5;
+}
+[data-testid="stTabs"] button[data-baseweb="tab"] {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 10px 22px;
+    color: #7A8A81;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #1B4332 !important;
+}
+
+/* Pulsanti principali, più decisi */
+[data-testid="stButton"] button {
+    border-radius: 6px;
+    font-weight: 600;
+}
+[data-testid="stButton"] button[kind="primary"] {
+    background-color: #1B4332;
+    border-color: #1B4332;
+}
+[data-testid="stButton"] button[kind="primary"]:hover {
+    background-color: #0F2B1E;
+    border-color: #0F2B1E;
+}
+
+/* Pulsanti radio come "pillole" invece dei soliti pallini */
+[data-testid="stRadio"] > div[role="radiogroup"] {
+    gap: 8px;
+}
+[data-testid="stRadio"] label {
+    background: #EEF3F0;
+    padding: 7px 18px;
+    border-radius: 20px;
+    border: 1px solid #D5E0DA;
+}
+[data-testid="stRadio"] label[data-checked="true"] {
+    background: #1B4332;
+    border-color: #1B4332;
+}
+[data-testid="stRadio"] label[data-checked="true"] p {
+    color: #F7F9F6 !important;
+}
+[data-testid="stRadio"] label > div:first-child {
+    display: none;
+}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚽ Le mie previsioni calcio")
-st.caption("Partite in arrivo ordinate per convenienza, con quota migliore e puntata consigliata.")
+st.markdown("""
+<div class="app-header">
+    <h1>⚽ Le mie previsioni calcio</h1>
+    <p>Partite in arrivo ordinate per convenienza, con quota migliore e puntata consigliata.</p>
+</div>
+""", unsafe_allow_html=True)
 
 
 def get_connection():
@@ -532,7 +604,7 @@ with tab_schedina:
                 "ritorno desiderato — in quel caso te lo segnalo."
             )
 
-            if st.button("🔍 Trova la combinazione migliore"):
+            if st.button("🔍 Trova la combinazione migliore", type="primary"):
                 legs_by_match = {}
                 for _, row in filtered_sched.iterrows():
                     bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker)
@@ -604,7 +676,7 @@ with tab_schedina:
                     "a fine partite) serve collegare un token GitHub."
                 )
             else:
-                if st.button("✅ Conferma questa schedina", key="confirm_slip_btn"):
+                if st.button("✅ Conferma questa schedina", key="confirm_slip_btn", type="primary"):
                     slip = {
                         "id": str(uuid.uuid4()),
                         "created_at": datetime.now(timezone.utc).isoformat(),
