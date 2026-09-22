@@ -203,8 +203,8 @@ if matches_df.empty:
              "Torna più tardi, oppure aggiorna i dati.")
     st.stop()
 
-tab_opportunita, tab_schedina, tab_simulazione, tab_storico, tab_tutte = st.tabs(
-    ["🎯 Opportunità di valore", "🎟️ Schedina", "🎲 Simulazione", "📊 Storico schedine", "📋 Tutte le partite"]
+tab_opportunita, tab_schedina, tab_storico, tab_tutte = st.tabs(
+    ["🎯 Opportunità di valore", "🎟️ Schedina", "📊 Storico schedine", "📋 Tutte le partite"]
 )
 
 # ---------------------------------------------------------------------------
@@ -235,14 +235,12 @@ with tab_opportunita:
         )
 
 # ---------------------------------------------------------------------------
-# SCHEDA 2: Schedina da un unico bookmaker
+# SCHEDA 2: Schedina (a mano, o trovata automaticamente) da un unico bookmaker
 # ---------------------------------------------------------------------------
 with tab_schedina:
     st.caption(
         "Una schedina reale va giocata tutta presso lo stesso bookmaker (non puoi "
-        "combinare una quota di un sito con una di un altro). Qui sotto vedi solo "
-        "le quote di UN bookmaker alla volta, così quello che costruisci è "
-        "davvero giocabile."
+        "combinare una quota di un sito con una di un altro)."
     )
 
     bookmakers = list_bookmakers(conn)
@@ -250,146 +248,125 @@ with tab_schedina:
         st.info("Non ci sono ancora quote salvate per costruire una schedina.")
     else:
         filtered_sched = competition_filter(matches_df, key="comp_schedina")
-        selected_bookmaker = st.selectbox("Scegli il bookmaker:", bookmakers,
-                                           format_func=bookmaker_display_label)
-
-        candidate_legs = {}  # etichetta leggibile -> dati della selezione
-        for _, row in filtered_sched.iterrows():
-            bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker)
-            if bm_odds is None:
-                continue  # questo bookmaker non copre questa partita
-            model_probs = {"Home": row["prob_home"], "Draw": row["prob_draw"], "Away": row["prob_away"]}
-            for vb in find_value_bets(model_probs, bm_odds, min_ev=0.0):
-                esito_label = {"Home": "1 (casa)", "Draw": "X (pareggio)", "Away": "2 (trasferta)"}[vb["selection"]]
-                label = (f"{row['home']} vs {row['away']} — {esito_label} @ {vb['odds']} "
-                         f"(nostra prob. {vb['model_probability']:.0%}, EV {vb['ev']:+.1%})")
-                candidate_legs[label] = vb
-
-        if not candidate_legs:
-            st.info(f"Nessuna selezione con valore trovata su {selected_bookmaker} al momento.")
-        else:
-            chosen = st.multiselect(
-                "Seleziona le partite da mettere in schedina:",
-                options=list(candidate_legs.keys()),
-            )
-            if chosen:
-                legs = [candidate_legs[c] for c in chosen]
-                combo = combine_parlay(legs)
-
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Quota combinata", f"{combo['combined_odds']}")
-                col2.metric("Nostra probabilità combinata", f"{combo['combined_probability']:.1%}")
-                col3.metric("Valore atteso (EV)", f"{combo['ev']:+.1%}")
-                col4.metric("Puntata consigliata", f"{combo['kelly_stake_pct']:.1f}% del capitale")
-
-                st.caption(
-                    "La probabilità combinata assume che le partite scelte siano indipendenti "
-                    "tra loro (il risultato dell'una non influenza l'altra) — vero nella "
-                    "stragrande maggioranza dei casi, a meno di partite con conseguenze dirette "
-                    "l'una sull'altra (es. stesso girone di Champions League, stessa giornata "
-                    "decisiva). Più selezioni aggiungi, più il rischio complessivo sale, anche "
-                    "se ognuna singolarmente ha valore."
-                )
-            else:
-                st.caption("Seleziona una o più partite qui sopra per vedere la schedina combinata.")
-
-# ---------------------------------------------------------------------------
-# SCHEDA 3: Simulazione (trova la combinazione migliore data una puntata,
-# un ritorno desiderato, un bookmaker e un numero di partite)
-# ---------------------------------------------------------------------------
-with tab_simulazione:
-    st.caption(
-        "Dimmi quanto vuoi puntare, il ritorno che cerchi, su quale bookmaker "
-        "e su quante partite: trovo la combinazione più sicura che raggiunge "
-        "l'obiettivo (o quella più vicina possibile, se l'obiettivo è troppo alto)."
-    )
-
-    bookmakers_sim = list_bookmakers(conn)
-    if not bookmakers_sim:
-        st.info("Non ci sono ancora quote salvate per fare una simulazione.")
-    else:
-        filtered_sim = competition_filter(matches_df, key="comp_simulazione")
 
         col_a, col_b = st.columns(2)
         with col_a:
-            stake = st.number_input("Puntata (€):", min_value=1.0, value=10.0, step=1.0)
-            sim_bookmaker = st.selectbox("Bookmaker:", bookmakers_sim, key="sim_bookmaker",
-                                          format_func=bookmaker_display_label)
+            selected_bookmaker = st.selectbox("Bookmaker:", bookmakers,
+                                               format_func=bookmaker_display_label, key="sched_bookmaker")
         with col_b:
-            target_roi_pct = st.slider("Ritorno desiderato:", min_value=20, max_value=500,
-                                        value=100, step=10, format="+%d%%")
-            num_matches = st.slider("Numero di partite:", min_value=1, max_value=5, value=3)
+            stake = st.number_input("Puntata (€):", min_value=1.0, value=10.0, step=1.0, key="sched_stake")
 
-        max_risk = st.select_slider(
-            "Rischio massimo per singola selezione:",
-            options=["🟢 Solo basso", "🟡 Basso o medio", "🔴 Qualsiasi"],
-            value="🔴 Qualsiasi",
+        mode = st.radio(
+            "Come vuoi costruire la schedina?",
+            ["🖐️ Scelgo io le partite", "🔍 Trova la combinazione migliore per me"],
+            key="schedina_mode", horizontal=True,
         )
-        risk_order = {"🟢 Rischio basso": 0, "🟡 Rischio medio": 1, "🔴 Rischio alto": 2}
-        max_risk_level = {"🟢 Solo basso": 0, "🟡 Basso o medio": 1, "🔴 Qualsiasi": 2}[max_risk]
-        st.caption(
-            "Limitare al rischio basso riduce le partite disponibili tra cui scegliere: "
-            "con poche selezioni 'sicure', potrebbe non essere possibile raggiungere il "
-            "ritorno desiderato — in quel caso te lo segnalo."
-        )
+        st.divider()
 
-        if st.button("🔍 Trova la combinazione migliore"):
-            # per ciascuna partita disponibile su questo bookmaker, teniamo
-            # TUTTE le selezioni che rispettano il rischio scelto (non solo
-            # la migliore per EV): così l'algoritmo può scegliere, partita
-            # per partita, quella che serve davvero per la combinazione
-            # complessiva più solida — il rischio pesa sulla scelta finale,
-            # non solo su cosa scartare a monte.
-            legs_by_match = {}
-            for _, row in filtered_sim.iterrows():
-                bm_odds = odds_by_bookmaker_for_match(conn, row["id"], sim_bookmaker)
+        combo = None
+        target_roi_pct = None
+
+        if mode.startswith("🖐️"):
+            # --- Modalità manuale: scegli tu quali partite mettere in schedina ---
+            candidate_legs = {}
+            for _, row in filtered_sched.iterrows():
+                bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker)
                 if bm_odds is None:
                     continue
                 model_probs = {"Home": row["prob_home"], "Draw": row["prob_draw"], "Away": row["prob_away"]}
-                candidates = find_value_bets(model_probs, bm_odds, min_ev=-1)  # anche EV negativo: decide l'algoritmo
-                candidates = [c for c in candidates
-                              if risk_order[risk_label(c["odds"])] <= max_risk_level]
-                if candidates:
-                    for c in candidates:
-                        c["match_id"] = row["id"]
-                        c["match_label"] = f"{row['home']} vs {row['away']}"
-                        c["match_date"] = row["date"]
-                    legs_by_match[row["id"]] = candidates
+                for vb in find_value_bets(model_probs, bm_odds, min_ev=0.0):
+                    esito_label = {"Home": "1 (casa)", "Draw": "X (pareggio)", "Away": "2 (trasferta)"}[vb["selection"]]
+                    label = (f"{row['home']} vs {row['away']} — {esito_label} @ {vb['odds']} "
+                             f"(nostra prob. {vb['model_probability']:.0%}, EV {vb['ev']:+.1%})")
+                    vb["match_id"] = row["id"]
+                    vb["match_label"] = f"{row['home']} vs {row['away']}"
+                    vb["match_date"] = row["date"]
+                    candidate_legs[label] = vb
 
-            result = find_best_combination(legs_by_match, num_matches, target_roi_pct / 100)
-
-            if result is None:
-                st.session_state.pop("sim_result", None)
-                st.warning(f"Non ci sono abbastanza partite disponibili su {sim_bookmaker} "
-                           f"(con il rischio scelto) per formare una combinazione di "
-                           f"{num_matches} partite. Prova ad allargare il rischio massimo, "
-                           f"o riduci il numero di partite.")
+            if not candidate_legs:
+                st.info(f"Nessuna selezione con valore trovata su {selected_bookmaker} al momento.")
             else:
-                combo, hit_target = result
-                # Salviamo il risultato nella memoria di sessione: senza questo,
-                # cliccare "Conferma" qui sotto (che ricarica la pagina) farebbe
-                # sparire la combinazione appena trovata.
-                st.session_state["sim_result"] = {
-                    "combo": combo, "hit_target": hit_target, "stake": stake,
-                    "bookmaker": sim_bookmaker, "target_roi_pct": target_roi_pct,
-                }
+                chosen = st.multiselect(
+                    "Seleziona le partite da mettere in schedina:",
+                    options=list(candidate_legs.keys()),
+                )
+                if chosen:
+                    combo = [candidate_legs[c] for c in chosen]
+                else:
+                    st.caption("Seleziona una o più partite qui sopra per vedere la schedina combinata.")
 
-        if "sim_result" in st.session_state:
-            sim = st.session_state["sim_result"]
-            combo = sim["combo"]
+        else:
+            # --- Modalità automatica: dato un obiettivo, trovo io la combinazione ---
+            col_c, col_d = st.columns(2)
+            with col_c:
+                target_roi_pct = st.slider("Ritorno desiderato:", min_value=20, max_value=500,
+                                            value=100, step=10, format="+%d%%")
+            with col_d:
+                num_matches = st.slider("Numero di partite:", min_value=1, max_value=5, value=3)
+
+            max_risk = st.select_slider(
+                "Rischio massimo per singola selezione:",
+                options=["🟢 Solo basso", "🟡 Basso o medio", "🔴 Qualsiasi"],
+                value="🔴 Qualsiasi",
+            )
+            risk_order = {"🟢 Rischio basso": 0, "🟡 Rischio medio": 1, "🔴 Rischio alto": 2}
+            max_risk_level = {"🟢 Solo basso": 0, "🟡 Basso o medio": 1, "🔴 Qualsiasi": 2}[max_risk]
+            st.caption(
+                "Limitare al rischio basso riduce le partite disponibili tra cui scegliere: "
+                "con poche selezioni 'sicure', potrebbe non essere possibile raggiungere il "
+                "ritorno desiderato — in quel caso te lo segnalo."
+            )
+
+            if st.button("🔍 Trova la combinazione migliore"):
+                legs_by_match = {}
+                for _, row in filtered_sched.iterrows():
+                    bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker)
+                    if bm_odds is None:
+                        continue
+                    model_probs = {"Home": row["prob_home"], "Draw": row["prob_draw"], "Away": row["prob_away"]}
+                    candidates = find_value_bets(model_probs, bm_odds, min_ev=-1)
+                    candidates = [c for c in candidates
+                                  if risk_order[risk_label(c["odds"])] <= max_risk_level]
+                    if candidates:
+                        for c in candidates:
+                            c["match_id"] = row["id"]
+                            c["match_label"] = f"{row['home']} vs {row['away']}"
+                            c["match_date"] = row["date"]
+                        legs_by_match[row["id"]] = candidates
+
+                result = find_best_combination(legs_by_match, num_matches, target_roi_pct / 100)
+
+                if result is None:
+                    st.session_state.pop("auto_combo", None)
+                    st.warning(f"Non ci sono abbastanza partite disponibili su {selected_bookmaker} "
+                               f"(con il rischio scelto) per formare una combinazione di "
+                               f"{num_matches} partite. Prova ad allargare il rischio massimo, "
+                               f"o riduci il numero di partite.")
+                else:
+                    found_combo, hit_target = result
+                    st.session_state["auto_combo"] = {
+                        "combo": found_combo, "hit_target": hit_target,
+                        "target_roi_pct": target_roi_pct,
+                    }
+
+            if "auto_combo" in st.session_state:
+                auto = st.session_state["auto_combo"]
+                combo = auto["combo"]
+                target_roi_pct = auto["target_roi_pct"]
+                if not auto["hit_target"]:
+                    st.info(f"Non ho trovato una combinazione che raggiunga +{target_roi_pct}% "
+                            f"— questa è quella con il ritorno più alto possibile disponibile ora.")
+                else:
+                    st.success("Trovata una combinazione che raggiunge l'obiettivo:")
+
+        # --- Da qui in poi: riepilogo e conferma, uguale per entrambe le modalità ---
+        if combo:
             combined_odds = math.prod(leg["odds"] for leg in combo)
             combined_prob = math.prod(leg["model_probability"] for leg in combo)
-            projected_return = sim["stake"] * combined_odds
-            projected_profit = projected_return - sim["stake"]
+            projected_return = stake * combined_odds
+            projected_profit = projected_return - stake
 
-            if not sim["hit_target"]:
-                st.info(f"Non ho trovato una combinazione che raggiunga "
-                        f"+{sim['target_roi_pct']}% — questa è quella con il ritorno "
-                        f"più alto possibile disponibile ora.")
-            else:
-                st.success("Trovata una combinazione che raggiunge l'obiettivo:")
-
-            st.subheader("Combinazione proposta")
+            st.subheader("Combinazione")
             for leg in combo:
                 esito_label = {"Home": "1 (casa)", "Draw": "X (pareggio)",
                                 "Away": "2 (trasferta)"}[leg["selection"]]
@@ -405,24 +382,26 @@ with tab_simulazione:
 
             st.caption(
                 f"Probabilità combinata secondo il nostro modello: {combined_prob:.1%}. "
-                "Come per la schedina, questo numero assume partite indipendenti tra loro."
+                "Assume che le partite scelte siano indipendenti tra loro (vero nella "
+                "stragrande maggioranza dei casi, a meno di partite con conseguenze dirette "
+                "l'una sull'altra)."
             )
 
             github_token = get_github_token()
             if github_token is None:
                 st.caption(
                     "Per confermare e salvare questa schedina (con resoconto automatico "
-                    "a fine partite) serve collegare un token GitHub — vedi le istruzioni "
-                    "che ti ho dato per attivarlo."
+                    "a fine partite) serve collegare un token GitHub."
                 )
             else:
                 if st.button("✅ Conferma questa schedina", key="confirm_slip_btn"):
                     slip = {
                         "id": str(uuid.uuid4()),
                         "created_at": datetime.now(timezone.utc).isoformat(),
-                        "bookmaker": sim["bookmaker"],
-                        "stake": sim["stake"],
-                        "target_roi_pct": sim["target_roi_pct"],
+                        "bookmaker": selected_bookmaker,
+                        "stake": stake,
+                        "target_roi_pct": target_roi_pct,
+                        "mode": "automatica" if mode.startswith("🔍") else "manuale",
                         "status": "pending",
                         "combined_odds": round(combined_odds, 3),
                         "legs": [
@@ -440,12 +419,12 @@ with tab_simulazione:
                                          slips, sha,
                                          f"Nuova schedina confermata ({len(slip['legs'])} partite)")
                         st.success("Schedina salvata! La trovi nella scheda 'Storico schedine'.")
-                        del st.session_state["sim_result"]
+                        st.session_state.pop("auto_combo", None)
                     except Exception as e:
                         st.error(f"Non sono riuscito a salvare la schedina: {e}")
 
 # ---------------------------------------------------------------------------
-# SCHEDA 4: Storico schedine confermate
+# SCHEDA 3: Storico schedine confermate
 # ---------------------------------------------------------------------------
 with tab_storico:
     github_token = get_github_token()
@@ -499,7 +478,7 @@ with tab_storico:
             c3.metric("Profitto totale", f"€{total_profit:+.2f}")
 
 # ---------------------------------------------------------------------------
-# SCHEDA 5: Tutte le partite in arrivo
+# SCHEDA 4: Tutte le partite in arrivo
 # ---------------------------------------------------------------------------
 with tab_tutte:
     filtered_df = competition_filter(matches_df, key="comp_tutte")
