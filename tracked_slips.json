@@ -1,0 +1,37 @@
+[
+  {
+    "id": "922389f4-f219-41fe-9f78-0756b15df386",
+    "created_at": "2026-09-22T07:59:37.198406+00:00",
+    "bookmaker": "William Hill",
+    "stake": 5.0,
+    "target_roi_pct": 40,
+    "status": "pending",
+    "combined_odds": 1.823,
+    "legs": [
+      {
+        "match_id": 14563,
+        "match_label": "Arsenal vs Lille",
+        "match_date": "2026-10-13",
+        "selection": "Home",
+        "odds": 1.25,
+        "model_probability": 0.918
+      },
+      {
+        "match_id": 14565,
+        "match_label": "Galatasaray vs Barcelona",
+        "match_date": "2026-10-13",
+        "selection": "Away",
+        "odds": 1.35,
+        "model_probability": 0.877
+      },
+      {
+        "match_id": 14566,
+        "match_label": "Viking FK vs Bayern Munich",
+        "match_date": "2026-10-13",
+        "selection": "Away",
+        "odds": 1.08,
+        "model_probability": 1.0
+      }
+    ]
+  }
+]
