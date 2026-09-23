@@ -244,7 +244,11 @@ def best_odds_for_match(conn, match_id):
     """Per ogni esito (1/X/2), trova la quota più alta tra i bookmaker,
     usando SOLO l'ultima quota registrata per ciascun bookmaker (non il
     massimo tra tutti gli snapshot storici mai salvati, che potrebbe non
-    essere più la quota realmente disponibile oggi)."""
+    essere più la quota realmente disponibile oggi).
+
+    Si usano PRIMA i soli bookmaker italiani (ADM): sono le quote che puoi
+    davvero giocare. Solo se per quella partita non ci sono quote italiane
+    complete (es. alcune partite di coppa europea) si ripiega su tutti."""
     query = """
         WITH ultima_quota AS (
             SELECT bookmaker, selection, odds,
@@ -253,14 +257,19 @@ def best_odds_for_match(conn, match_id):
                        ORDER BY snapshot_time DESC
                    ) AS rn
             FROM odds_snapshots
-            WHERE match_id = ?
+            WHERE match_id = ? {filtro}
         )
         SELECT selection, MAX(odds) as best_odds, bookmaker
         FROM ultima_quota
         WHERE rn = 1
         GROUP BY selection
     """
-    rows = conn.execute(query, (match_id,)).fetchall()
+    italiani = sorted(BOOKMAKER_ITALIA)
+    segnaposti = ",".join("?" * len(italiani))
+    rows = conn.execute(query.format(filtro=f"AND bookmaker IN ({segnaposti})"),
+                        (match_id, *italiani)).fetchall()
+    if len(rows) < 3:
+        rows = conn.execute(query.format(filtro=""), (match_id,)).fetchall()
     if len(rows) < 3:
         return None
     return {r[0]: r[1] for r in rows}, {r[0]: r[2] for r in rows}
@@ -291,6 +300,9 @@ def bookmaker_display_label(bookmaker):
     simulazioni quando i pochi bookmaker italiani coperti dalla nostra
     fonte non hanno quote per una partita."""
     if bookmaker in BOOKMAKER_ITALIA:
+        stesse_quote = BOOKMAKER_CLONI.get(bookmaker)
+        if stesse_quote:
+            return f"🇮🇹 {bookmaker} (ADM) — stesse quote: {stesse_quote}"
         return f"🇮🇹 {bookmaker} (ADM)"
     return bookmaker
 
@@ -320,18 +332,19 @@ def risk_label(odds):
     return "🔴 Rischio alto"
 
 
-# Bookmaker con licenza ADM (autorizzati in Italia) TRA QUELLI CHE LA NOSTRA
-# FONTE DELLE QUOTE COPRE DAVVERO. Ho controllato l'elenco ufficiale e
-# completo di The Odds API (tutte le regioni: EU, UK, Francia, Svezia,
-# Finlandia): la maggior parte dei bookmaker italiani noti (Eurobet, Snai,
-# Sisal, Lottomatica, Goldbet, Betflag, Planetwin365, AdmiralBet, ecc.)
-# NON sono coperti da questa fonte gratuita, quindi non possiamo mostrarli
-# anche se esistono davvero. Gli unici due esplicitamente etichettati come
-# entità italiane sono questi:
-BOOKMAKER_ITALIA = {"Unibet", "Codere"}
-# Nota: "Unibet" potrebbe in teoria riferirsi anche a Unibet Francia/Olanda/
-# Svezia (la fonte non distingue sempre il paese nel nome mostrato) — quindi
-# anche questo non è garantito al 100% essere l'entità italiana.
+# Bookmaker con licenza ADM (autorizzati in Italia) di cui abbiamo le quote.
+# Goldbet, Eurobet, bet365 e Sisal arrivano da OddsPapi (fetch_odds.py),
+# fonte che distingue esplicitamente le versioni italiane (.it) dei siti.
+# Unibet e Codere arrivano ancora da The Odds API (coppe europee); per
+# Unibet la fonte non garantisce che sia l'entità italiana.
+BOOKMAKER_ITALIA = {"Goldbet", "Eurobet", "bet365", "Sisal", "Unibet", "Codere"}
+
+# Marchi diversi che usano le stesse identiche quote (stessa piattaforma),
+# secondo OddsPapi: giocare su uno o sull'altro è equivalente.
+BOOKMAKER_CLONI = {
+    "Goldbet": "Lottomatica, Planetwin365, BetFlag",
+    "Sisal": "Snai, PokerStars",
+}
 
 
 def load_upcoming_player_predictions(conn):
