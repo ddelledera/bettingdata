@@ -132,3 +132,17 @@ CREATE TABLE IF NOT EXISTS bsd_teams (
     bsd_id INTEGER PRIMARY KEY,
     team_id INTEGER NOT NULL REFERENCES teams(id)
 );
+
+-- Quote "marcatore in qualsiasi momento" dei bookmaker italiani. I bookmaker
+-- scrivono il nome del giocatore a modo loro: player_id è il collegamento al
+-- nostro giocatore (NULL se il nome non è stato riconosciuto con sicurezza).
+CREATE TABLE IF NOT EXISTS scorer_odds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id INTEGER NOT NULL REFERENCES matches(id),
+    bookmaker TEXT NOT NULL,
+    player_name TEXT NOT NULL,
+    player_id INTEGER REFERENCES players(id),
+    odds REAL NOT NULL,
+    snapshot_time TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scorer_odds_match ON scorer_odds(match_id);
