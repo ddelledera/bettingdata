@@ -9,6 +9,7 @@ l'elenco delle partite sia le quote dei bookmaker.
 
 import os
 import sqlite3
+from db_utils import init_db
 import requests
 from datetime import datetime, timezone
 from team_utils import get_or_create_team
@@ -88,8 +89,7 @@ def load_into_db(events, league_name, conn):
 
 def main():
     conn = sqlite3.connect(DB_PATH)
-    with open("schema.sql") as f:
-        conn.executescript(f.read())
+    init_db(conn)
 
     for sport_key, league_name in SPORT_KEYS.items():
         print(f"Scarico partite e quote: {league_name}...")
