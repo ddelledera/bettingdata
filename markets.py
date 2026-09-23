@@ -27,18 +27,33 @@ SELECTIONS = {
     "Under3.5": ("Under/Over", "Under 3.5", "Under 3.5 · al massimo 3 gol", lambda h, a: h + a <= 3),
 }
 
-MARKET_NAMES = ["1X2", "Doppia chance", "Goal/No Goal", "Under/Over"]
+MARKET_NAMES = ["1X2", "Doppia chance", "Goal/No Goal", "Under/Over", "Marcatori"]
+
+# I marcatori non sono in SELECTIONS: la loro chiave è "Scorer:<id giocatore>"
+# e l'esito non si ricava dal risultato finale ma dai gol del giocatore
+# (vedi check_results.py).
+SCORER_PREFIX = "Scorer:"
+
+
+def is_scorer(key):
+    return str(key).startswith(SCORER_PREFIX)
+
+
+def scorer_key(player_id):
+    return f"{SCORER_PREFIX}{player_id}"
 
 
 def market_of(key):
-    return SELECTIONS[key][0]
+    return "Marcatori" if is_scorer(key) else SELECTIONS[key][0]
 
 
 def short_label(key):
     return SELECTIONS[key][1] if key in SELECTIONS else key
 
 
-def long_label(key):
+def long_label(key, player_name=None):
+    if is_scorer(key):
+        return f"⚽ {player_name or 'Giocatore'} segna"
     return SELECTIONS[key][2] if key in SELECTIONS else key
 
 
