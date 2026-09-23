@@ -19,6 +19,8 @@ import sqlite3
 MIGRATIONS = [
     ("model_predictions", "expected_goals_home", "REAL"),
     ("model_predictions", "expected_goals_away", "REAL"),
+    ("players", "availability", "TEXT"),
+    ("players", "injury_type", "TEXT"),
 ]
 
 
