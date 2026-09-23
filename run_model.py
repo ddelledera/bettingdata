@@ -9,6 +9,7 @@ fetch_fixtures.py, fetch_odds.py).
 """
 
 import sqlite3
+from collections import Counter
 from db_utils import init_db
 from datetime import datetime, date, timezone
 from model import DixonColesModel
@@ -87,11 +88,18 @@ def save_prediction(conn, match_id, prob_home, prob_draw, prob_away,
 
 
 EUROPEAN_COMPETITIONS = {"Champions League", "Europa League", "Conference League"}
+MIN_EURO_GAMES = 20   # partite minime nello storico per prevedere una squadra in coppa
 
 
 def main():
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
+
+    # Ricalcoliamo da zero le partite in arrivo: una partita che oggi viene
+    # saltata (es. squadra con troppi pochi dati) non deve restare con la
+    # previsione di un calcolo precedente, magari sbagliato.
+    conn.execute("""DELETE FROM model_predictions WHERE match_id IN (
+                        SELECT id FROM matches WHERE home_goals IS NULL AND date >= date('now'))""")
 
     leagues = list_leagues(conn)
     domestic_leagues = [l for l in leagues if l not in EUROPEAN_COMPETITIONS]
@@ -151,6 +159,11 @@ def main():
         if len(combined_matches) >= 50:
             euro_model = DixonColesModel()
             euro_model.fit(combined_matches)
+            if not euro_model.converged:
+                print("  ATTENZIONE: il modello europeo non è arrivato a convergenza, "
+                      "previsioni di coppa da prendere con cautela.")
+            team_games = Counter(t for m in combined_matches
+                                 for t in (m["home_team"], m["away_team"]))
             print(f"  Modello europeo allenato ({len(euro_model.teams)} squadre).")
 
             for competition in EUROPEAN_COMPETITIONS:
@@ -164,12 +177,19 @@ def main():
                     if missing:
                         print(f"    (saltata: {home} vs {away} — non riconosciuta: {', '.join(missing)})")
                         continue
+                    # Squadre di paesi che non abbiamo nello storico (es. Slavia
+                    # Praga, Salisburgo) compaiono solo in poche partite di
+                    # Champions: la loro forza stimata è troppo incerta e
+                    # "trascina" anche l'avversaria. Meglio nessuna previsione.
+                    thin = [t for t in (home, away) if team_games[t] < MIN_EURO_GAMES]
+                    if thin:
+                        print(f"    (saltata: {home} vs {away} — troppo poche partite per: "
+                              f"{', '.join(thin)})")
+                        continue
                     ph, pd_, pa = euro_model.predict_match(home, away)
                     eg_home, eg_away = euro_model.expected_goals(home, away)
-                    # Niente mercati sui gol per le coppe, per ora: il modello
-                    # europeo stima un numero di gol irrealistico (da sistemare),
-                    # e Under/Over e Goal/No Goal ne dipendono direttamente.
-                    save_prediction(conn, match_id, ph, pd_, pa, eg_home, eg_away)
+                    save_prediction(conn, match_id, ph, pd_, pa, eg_home, eg_away,
+                                    euro_model.market_probabilities(home, away))
                     predicted += 1
                     print(f"    {home} vs {away}: casa {ph:.0%}  pareggio {pd_:.0%}  trasferta {pa:.0%}")
 
