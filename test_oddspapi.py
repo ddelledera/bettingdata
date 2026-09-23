@@ -1,11 +1,10 @@
 """
-Diagnosi OddsPapi — perché Sisal ha quote solo per 10 partite di Premier?
-Consumo: 1 richiesta. NON tocca data.db né il workflow.
+Diagnosi OddsPapi 2 — la scarsa copertura è solo di Sisal o di tutti
+i bookmaker italiani? Consumo: 3 richieste. NON tocca data.db né il workflow.
 """
 
 import os
-import sys
-from collections import Counter
+import time
 
 import requests
 
@@ -13,40 +12,32 @@ BASE_URL = "https://api.oddspapi.io/v4"
 API_KEY = os.environ.get("ODDSPAPI_KEY")
 NAMES = {23: "Serie A", 17: "Premier League", 8: "LaLiga",
          35: "Bundesliga", 34: "Ligue 1"}
-BOOK = "sisal.it"
+BOOKS = ["goldbet.it", "eurobet.it", "bet365.it"]
 
-r = requests.get(f"{BASE_URL}/odds-by-tournaments", timeout=60, params={
-    "apiKey": API_KEY, "tournamentIds": ",".join(map(str, NAMES)),
-    "bookmaker": BOOK, "oddsFormat": "decimal", "language": "en"})
-if r.status_code != 200:
-    print(f"ERRORE {r.status_code}: {r.text[:400]}")
-    sys.exit(1)
-data = r.json()
-fixtures = data if isinstance(data, list) else (data.get("data") or [data])
+for book in BOOKS:
+    r = requests.get(f"{BASE_URL}/odds-by-tournaments", timeout=60, params={
+        "apiKey": API_KEY, "tournamentIds": ",".join(map(str, NAMES)),
+        "bookmaker": book, "oddsFormat": "decimal", "language": "en"})
+    time.sleep(1.1)
+    print(f"\n########## {book} ##########")
+    if r.status_code != 200:
+        print(f"  ERRORE {r.status_code}: {r.text[:300]}")
+        continue
+    data = r.json()
+    fixtures = data if isinstance(data, list) else (data.get("data") or [data])
+    print(f"  Partite totali: {len(fixtures)}")
+    for tid, name in NAMES.items():
+        fxs = [f for f in fixtures if f.get("tournamentId") == tid]
+        con_1x2 = [f for f in fxs
+                   if ((f.get("bookmakerOdds") or {}).get(book) or {})
+                   .get("markets", {}).get("101")]
+        date = sorted((f.get("startTime") or "")[:10] for f in con_1x2)
+        agg = sorted(f.get("updatedAt") or "" for f in fxs)
+        mercati = [len(((f.get("bookmakerOdds") or {}).get(book) or {})
+                       .get("markets") or {}) for f in con_1x2]
+        print(f"  {name:15s} partite={len(fxs):3d}  con 1X2={len(con_1x2):3d}"
+              + (f"  date {date[0]} -> {date[-1]}" if date else "")
+              + (f"  mercati medi={sum(mercati)//len(mercati)}" if mercati else "")
+              + (f"  ultimo aggiornamento={agg[-1][:16]}" if agg else ""))
 
-print(f"Partite totali nella risposta: {len(fixtures)}")
-if fixtures:
-    print("Campi di una partita:", sorted(fixtures[0].keys()))
-
-for tid, name in NAMES.items():
-    fxs = sorted((f for f in fixtures if f.get("tournamentId") == tid),
-                 key=lambda f: f.get("startTime") or "")
-    print(f"\n===== {name}: {len(fxs)} partite =====")
-    stato = Counter()
-    for f in fxs:
-        b = (f.get("bookmakerOdds") or {}).get(BOOK)
-        if not b:
-            riga = "sisal ASSENTE"
-        else:
-            m = b.get("markets") or {}
-            m101 = m.get("101")
-            riga = (f"attivo={b.get('bookmakerIsActive')} "
-                    f"sospeso={b.get('suspended')} mercati={len(m)} "
-                    f"1X2={'si' if m101 else 'no'}"
-                    + (f" (attivo={m101.get('marketActive')})" if m101 else ""))
-        stato[riga] += 1
-        print(f"  {(f.get('startTime') or '?')[:16]}  "
-              f"{f.get('participant1Id')}-{f.get('participant2Id')}  {riga}")
-    print("  Riepilogo:", dict(stato))
-
-print("\nFatto. Richieste usate: 1.")
+print("\nFatto. Richieste usate: 3.")
