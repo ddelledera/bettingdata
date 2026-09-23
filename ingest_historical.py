@@ -13,6 +13,7 @@ da solo, senza che tu debba fare nulla).
 """
 
 import sqlite3
+from db_utils import init_db
 import requests
 import pandas as pd
 from io import StringIO
@@ -147,8 +148,7 @@ def load_into_db(df, league_name, season, conn):
 
 def main():
     conn = sqlite3.connect(DB_PATH)
-    with open("schema.sql") as f:
-        conn.executescript(f.read())
+    init_db(conn)
 
     for league_code, league_name in LEAGUE_CODES.items():
         for season in SEASONS:
