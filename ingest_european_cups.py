@@ -22,6 +22,7 @@ from db_utils import init_db
 import requests
 from datetime import date
 from team_utils import get_or_create_team
+from team_matching import resolve_team
 
 DB_PATH = "data.db"
 API_KEY = os.environ.get("FOOTBALL_DATA_API_KEY", "")
@@ -34,6 +35,12 @@ _today = date.today()
 CURRENT_SEASON_START_YEAR = _today.year if _today.month >= 7 else _today.year - 1
 SEASONS_TO_TRY = [CURRENT_SEASON_START_YEAR - i for i in range(3)]
 
+
+
+def team_id(cur, name):
+    """Collega il nome alla squadra dello storico (vedi team_matching.py);
+    se non c'è una corrispondenza sicura, crea/usa il nome così com'è."""
+    return resolve_team(cur, name) or get_or_create_team(cur, name)
 
 def fetch_finished(season):
     if not API_KEY:
@@ -60,8 +67,8 @@ def load_into_db(matches, conn):
         if hg is None or ag is None:
             continue
 
-        home_id = get_or_create_team(cur, m["homeTeam"]["name"])
-        away_id = get_or_create_team(cur, m["awayTeam"]["name"])
+        home_id = team_id(cur, m["homeTeam"]["name"])
+        away_id = team_id(cur, m["awayTeam"]["name"])
         match_date = m["utcDate"][:10]
         season_label = m.get("season", {}).get("startDate", "")[:4] or "sconosciuta"
 
