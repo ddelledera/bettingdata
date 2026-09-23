@@ -9,6 +9,7 @@ expected_goals_home/away sia le statistiche giocatore già salvate).
 """
 
 import sqlite3
+from db_utils import init_db
 from datetime import datetime, timezone
 from scorer_model import distribute_team_goals
 
@@ -75,8 +76,7 @@ def save_player_prediction(conn, player_id, match_id, result):
 
 def main():
     conn = sqlite3.connect(DB_PATH)
-    with open("schema.sql") as f:
-        conn.executescript(f.read())
+    init_db(conn)
 
     matches = load_upcoming_matches_with_goals(conn)
     print(f"Partite in arrivo con gol attesi disponibili: {len(matches)}")
