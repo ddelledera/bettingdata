@@ -1,6 +1,8 @@
 """
-Diagnosi OddsPapi 2 — la scarsa copertura è solo di Sisal o di tutti
-i bookmaker italiani? Consumo: 3 richieste. NON tocca data.db né il workflow.
+Verifica manuale OddsPapi — prossima giornata di Serie A con nomi squadre,
+quote 1X2 di Pinnacle + Goldbet + Eurobet + bet365 IT e ora dell'ultimo cambio.
+Da confrontare con Oddschecker / siti dei bookmaker NELLO STESSO MOMENTO.
+Consumo: 5 richieste. NON tocca data.db né il workflow.
 """
 
 import os
@@ -10,34 +12,66 @@ import requests
 
 BASE_URL = "https://api.oddspapi.io/v4"
 API_KEY = os.environ.get("ODDSPAPI_KEY")
-NAMES = {23: "Serie A", 17: "Premier League", 8: "LaLiga",
-         35: "Bundesliga", 34: "Ligue 1"}
-BOOKS = ["goldbet.it", "eurobet.it", "bet365.it"]
+SERIE_A = 23
+BOOKS = ["pinnacle", "goldbet.it", "eurobet.it", "bet365.it"]
+SHORT = {"pinnacle": "PIN", "goldbet.it": "GOLD", "eurobet.it": "EURO",
+         "bet365.it": "B365"}
 
-for book in BOOKS:
-    r = requests.get(f"{BASE_URL}/odds-by-tournaments", timeout=60, params={
-        "apiKey": API_KEY, "tournamentIds": ",".join(map(str, NAMES)),
-        "bookmaker": book, "oddsFormat": "decimal", "language": "en"})
+
+def get(path, **params):
+    params["apiKey"] = API_KEY
+    r = requests.get(f"{BASE_URL}{path}", params=params, timeout=60)
     time.sleep(1.1)
-    print(f"\n########## {book} ##########")
     if r.status_code != 200:
-        print(f"  ERRORE {r.status_code}: {r.text[:300]}")
-        continue
-    data = r.json()
-    fixtures = data if isinstance(data, list) else (data.get("data") or [data])
-    print(f"  Partite totali: {len(fixtures)}")
-    for tid, name in NAMES.items():
-        fxs = [f for f in fixtures if f.get("tournamentId") == tid]
-        con_1x2 = [f for f in fxs
-                   if ((f.get("bookmakerOdds") or {}).get(book) or {})
-                   .get("markets", {}).get("101")]
-        date = sorted((f.get("startTime") or "")[:10] for f in con_1x2)
-        agg = sorted(f.get("updatedAt") or "" for f in fxs)
-        mercati = [len(((f.get("bookmakerOdds") or {}).get(book) or {})
-                       .get("markets") or {}) for f in con_1x2]
-        print(f"  {name:15s} partite={len(fxs):3d}  con 1X2={len(con_1x2):3d}"
-              + (f"  date {date[0]} -> {date[-1]}" if date else "")
-              + (f"  mercati medi={sum(mercati)//len(mercati)}" if mercati else "")
-              + (f"  ultimo aggiornamento={agg[-1][:16]}" if agg else ""))
+        print(f"ERRORE {r.status_code} su {path} {params.get('bookmaker', '')}: "
+              f"{r.text[:300]}")
+        return None
+    return r.json()
 
-print("\nFatto. Richieste usate: 3.")
+
+def price_1x2(book_data):
+    m = ((book_data or {}).get("markets") or {}).get("101")
+    if not m:
+        return None
+    res = []
+    for oid in ("101", "102", "103"):
+        p = m.get("outcomes", {}).get(oid, {}).get("players", {}).get("0", {})
+        res.append((p.get("price"), p.get("changedAt") or ""))
+    return res
+
+
+names = get("/participants", sportId=10, language="it") or {}
+print(f"Squadre nell'anagrafica: {len(names)}")
+
+matches = {}  # fixtureId -> {info, quote per bookmaker}
+for book in BOOKS:
+    data = get("/odds-by-tournaments", tournamentIds=SERIE_A, bookmaker=book,
+               oddsFormat="decimal", language="it")
+    for fx in (data if isinstance(data, list) else []):
+        entry = matches.setdefault(fx["fixtureId"], {"fx": fx, "q": {}})
+        q = price_1x2((fx.get("bookmakerOdds") or {}).get(book))
+        if q:
+            entry["q"][book] = q
+
+print("\nQUOTE 1X2 — SERIE A (orari UTC)\n")
+for e in sorted(matches.values(), key=lambda e: e["fx"].get("startTime") or ""):
+    fx = e["fx"]
+    home = names.get(str(fx.get("participant1Id")), fx.get("participant1Id"))
+    away = names.get(str(fx.get("participant2Id")), fx.get("participant2Id"))
+    print(f"{(fx.get('startTime') or '')[:16].replace('T', ' ')}  {home} - {away}")
+    best = [0, 0, 0]
+    for book in BOOKS:
+        q = e["q"].get(book)
+        if not q:
+            print(f"    {SHORT[book]:5s}  (nessuna quota)")
+            continue
+        changed = max(c for _, c in q)[:16].replace("T", " ")
+        print(f"    {SHORT[book]:5s} {q[0][0] or '-':>6} {q[1][0] or '-':>6} "
+              f"{q[2][0] or '-':>6}   cambiata: {changed}")
+        if book != "pinnacle":
+            best = [max(b, x[0] or 0) for b, x in zip(best, q)]
+    if any(best):
+        print(f"    MIGLIORE IT {best[0]:>6} {best[1]:>6} {best[2]:>6}")
+    print()
+
+print("Fatto. Richieste usate: 5.")
