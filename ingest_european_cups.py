@@ -18,6 +18,7 @@ riesce a ottenere (mai un errore bloccante).
 
 import os
 import sqlite3
+from db_utils import init_db
 import requests
 from datetime import date
 from team_utils import get_or_create_team
@@ -79,8 +80,7 @@ def load_into_db(matches, conn):
 
 def main():
     conn = sqlite3.connect(DB_PATH)
-    with open("schema.sql") as f:
-        conn.executescript(f.read())
+    init_db(conn)
 
     total = 0
     for season in SEASONS_TO_TRY:
