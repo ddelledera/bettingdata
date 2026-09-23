@@ -52,10 +52,14 @@ def _tau_correction(home_goals, away_goals, lam_home, lam_away, rho):
 
 
 class DixonColesModel:
-    def __init__(self, decay_rate=0.001):
+    def __init__(self, decay_rate=0.001, ridge=0.5):
         # decay_rate: quanto "dimenticare" le partite vecchie.
         # Un valore più alto dà più peso alle partite recenti.
         self.decay_rate = decay_rate
+        # ridge: quanto "tirare verso la media" le squadre con pochi dati.
+        # Piccolo: su una squadra con decine di partite l'effetto è trascurabile.
+        self.ridge = ridge
+        self.converged = None
         self.teams = []
         self.params = None  # dict: team -> (attacco, difesa); più home_adv, rho
 
@@ -138,18 +142,35 @@ class DixonColesModel:
 
             return nll, -grad  # neghiamo: stiamo minimizzando, non massimizzando
 
-        # Vincolo: la somma delle forze d'attacco è fissata a 0 (altrimenti il
-        # modello ha infinite soluzioni equivalenti: serve un punto di riferimento).
-        constraint_jac = np.concatenate([np.ones(n), np.zeros(n), [0, 0]])
-        constraints = {
-            "type": "eq",
-            "fun": lambda x: np.sum(x[:n]),
-            "jac": lambda x: constraint_jac,
-        }
+        # Ottimizzazione. In origine usavamo SLSQP con il vincolo "somma degli
+        # attacchi = 0": funziona per un singolo campionato (20 squadre) ma con
+        # il modello europeo (400 squadre, 800 parametri) si arrendeva dopo 4
+        # iterazioni ("Rank-deficient"), lasciando le forze quasi a caso — da
+        # qui previsioni assurde come 14 gol attesi o PSV al 97% col Lipsia.
+        #
+        # Ora: L-BFGS-B (pensato per molti parametri) senza vincolo, con una
+        # piccola penalità "ridge" che tira verso la media le squadre con
+        # pochissime partite (invece di lasciarle a valori estremi), e poi
+        # centriamo gli attacchi a media 0: spostare attacchi e difese dello
+        # stesso valore non cambia nessuna previsione, quindi è solo il punto
+        # di riferimento.
+        ridge = self.ridge
 
-        result = minimize(neg_log_likelihood_and_grad, x0, jac=True,
-                           constraints=constraints, method="SLSQP",
-                           options={"maxiter": 200, "ftol": 1e-8})
+        def objective(x):
+            nll, grad = neg_log_likelihood_and_grad(x)
+            reg = x[:2 * n]
+            nll += ridge * np.sum(reg ** 2)
+            grad = grad.copy()
+            grad[:2 * n] += 2 * ridge * reg
+            return nll, grad
+
+        bounds = [(None, None)] * (2 * n) + [(None, None), (-0.3, 0.3)]
+        result = minimize(objective, x0, jac=True, method="L-BFGS-B", bounds=bounds,
+                          options={"maxiter": 5000, "maxfun": 10000})
+        self.converged = bool(result.success)
+        shift = np.mean(result.x[:n])
+        result.x[:n] -= shift
+        result.x[n:2 * n] -= shift
 
         attack = result.x[:n]
         defense = result.x[n:2 * n]
