@@ -131,8 +131,14 @@ def load_into_db(df, league_name, season, conn):
         ).fetchone()[0]
         inserted += 1
 
-        # Se il file ha le quote medie storiche, le salviamo come "fotografia" di chiusura
-        if all(col in row and pd.notna(row[col]) for col in ODDS_COLUMNS.values()):
+        # Se il file ha le quote medie storiche, le salviamo come "fotografia" di
+        # chiusura — UNA volta sola: prima venivano reinserite a ogni esecuzione
+        # (ogni giorno, per 4 stagioni di 17 campionati) e il database cresceva
+        # senza fine (oltre 50 MB, con ogni quota ripetuta decine di volte).
+        already = cur.execute("""SELECT 1 FROM odds_snapshots
+                                 WHERE match_id = ? AND bookmaker = 'market_average' LIMIT 1""",
+                              (match_id,)).fetchone()
+        if not already and all(col in row and pd.notna(row[col]) for col in ODDS_COLUMNS.values()):
             for selection, col in ODDS_COLUMNS.items():
                 cur.execute("""
                     INSERT INTO odds_snapshots (match_id, bookmaker, market, selection,
@@ -146,9 +152,25 @@ def load_into_db(df, league_name, season, conn):
     return inserted, updated_odds
 
 
+def remove_duplicate_history_odds(conn):
+    """Pulizia (una tantum, poi non trova più niente): tiene una sola copia
+    di ogni quota storica 'market_average' e compatta il file del database."""
+    deleted = conn.execute("""
+        DELETE FROM odds_snapshots
+        WHERE bookmaker = 'market_average' AND id NOT IN (
+            SELECT MIN(id) FROM odds_snapshots WHERE bookmaker = 'market_average'
+            GROUP BY match_id, selection)
+    """).rowcount
+    conn.commit()
+    if deleted:
+        print(f"Quote storiche duplicate rimosse: {deleted}. Compatto il database...")
+        conn.execute("VACUUM")
+
+
 def main():
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
+    remove_duplicate_history_odds(conn)
 
     for league_code, league_name in LEAGUE_CODES.items():
         for season in SEASONS:
