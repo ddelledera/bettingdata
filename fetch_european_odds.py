@@ -13,6 +13,7 @@ from db_utils import init_db
 import requests
 from datetime import datetime, timezone
 from team_utils import get_or_create_team
+from team_matching import resolve_team
 
 DB_PATH = "data.db"
 API_KEY = os.environ.get("ODDS_API_KEY", "")
@@ -24,6 +25,12 @@ SPORT_KEYS = {
     "soccer_uefa_europa_conference_league": "Conference League",
 }
 
+
+
+def team_id(cur, name):
+    """Collega il nome alla squadra dello storico (vedi team_matching.py);
+    se non c'è una corrispondenza sicura, crea/usa il nome così com'è."""
+    return resolve_team(cur, name) or get_or_create_team(cur, name)
 
 def fetch_odds(sport_key):
     if not API_KEY:
@@ -49,8 +56,8 @@ def load_into_db(events, league_name, conn):
 
     for event in events:
         match_date = event["commence_time"][:10]
-        home_id = get_or_create_team(cur, event["home_team"])
-        away_id = get_or_create_team(cur, event["away_team"])
+        home_id = team_id(cur, event["home_team"])
+        away_id = team_id(cur, event["away_team"])
 
         cur.execute("""
             INSERT INTO matches (date, league, season, home_team_id, away_team_id,
