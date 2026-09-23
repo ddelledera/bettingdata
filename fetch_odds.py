@@ -1,6 +1,7 @@
 """
 Scarica le quote attuali dei bookmaker ITALIANI (licenza ADM) per le partite
-in arrivo dei 5 campionati principali, così il modello le confronta con le
+in arrivo dei 5 campionati principali — 1X2, doppia chance, Goal/No Goal e
+Under/Over 1.5/2.5/3.5 (arrivano tutti nella stessa richiesta, costo zero), così il modello le confronta con le
 proprie probabilità e trova il valore su quote che puoi davvero giocare.
 
 Fonte: OddsPapi (piano gratuito: 250 richieste al mese, senza carta).
@@ -22,6 +23,7 @@ di riferimento "sharp" per il futuro backtest del modello.
 """
 
 import difflib
+import json
 import os
 import re
 import sqlite3
@@ -31,6 +33,7 @@ from datetime import date, datetime, timedelta, timezone
 import requests
 
 from db_utils import init_db
+from markets import market_of
 
 DB_PATH = "data.db"
 API_KEY = os.environ.get("ODDSPAPI_KEY", "")
@@ -54,8 +57,18 @@ ITALIAN_BOOKMAKERS = {
 }
 REFERENCE_BOOKMAKER = ("pinnacle", "Pinnacle")
 
-MARKET_1X2 = "101"
-SELECTIONS = {"101": "Home", "102": "Draw", "103": "Away"}
+# Mercati che salviamo, con il nome usato nell'anagrafica di OddsPapi. Gli
+# ID numerici dei mercati (es. 101 = 1X2, 104 = Goal/No Goal) e le linee
+# degli Under/Over li leggiamo dall'anagrafica /markets, salvata nel
+# database la prima volta (1 sola richiesta, poi mai più).
+WANTED_MARKETS = {"Full Time Result", "Double Chance Full Time",
+                  "Both Teams To Score", "Over Under Full Time"}
+OVER_UNDER_LINES = {1.5, 2.5, 3.5}
+OUTCOME_TO_KEY = {
+    "Full Time Result": {"1": "Home", "X": "Draw", "2": "Away"},
+    "Double Chance Full Time": {"1X": "1X", "X2": "X2", "2X": "X2", "12": "12"},
+    "Both Teams To Score": {"Yes": "Goal", "No": "NoGoal"},
+}
 
 # Parole "di contorno" nei nomi delle squadre, ignorate nel confronto
 # (es. "Parma Calcio" -> "parma", "AC Monza" -> "monza")
@@ -146,16 +159,49 @@ def find_match_id(cur, league, start_time, home, away):
     return best
 
 
-def parse_1x2(book_data):
-    market = ((book_data or {}).get("markets") or {}).get(MARKET_1X2)
-    if not market or market.get("marketActive") is False:
-        return None
+def load_market_meta(conn):
+    """Anagrafica dei mercati che ci interessano: id -> (nome, linea, esiti)."""
+    conn.execute("""CREATE TABLE IF NOT EXISTS oddspapi_markets (
+                        market_id INTEGER PRIMARY KEY, name TEXT, handicap REAL,
+                        outcomes TEXT)""")
+    if not conn.execute("SELECT 1 FROM oddspapi_markets LIMIT 1").fetchone():
+        print("  Scarico l'anagrafica dei mercati (1 richiesta, solo la prima volta)...")
+        data = api_get("/markets", sportId=10)
+        rows = []
+        for m in data if isinstance(data, list) else []:
+            if m.get("marketName") in WANTED_MARKETS and not m.get("playerProp"):
+                outcomes = {str(o["outcomeId"]): o.get("outcomeName")
+                            for o in m.get("outcomes") or []}
+                rows.append((m["marketId"], m["marketName"], m.get("handicap"),
+                             json.dumps(outcomes)))
+        conn.executemany("INSERT OR REPLACE INTO oddspapi_markets VALUES (?, ?, ?, ?)", rows)
+        conn.commit()
+        print(f"    {len(rows)} mercati utili salvati")
+    return {str(mid): (name, handicap, json.loads(outs))
+            for mid, name, handicap, outs in conn.execute("SELECT * FROM oddspapi_markets")}
+
+
+def parse_markets(book_data, meta):
+    """Tutte le quote utili di un bookmaker per una partita: {selezione: quota}."""
     prices = {}
-    for oid, selection in SELECTIONS.items():
-        p = market.get("outcomes", {}).get(oid, {}).get("players", {}).get("0", {})
-        if p.get("price") and p.get("active", True):
-            prices[selection] = float(p["price"])
-    return prices if len(prices) == 3 else None
+    for mid, market in ((book_data or {}).get("markets") or {}).items():
+        if mid not in meta or market.get("marketActive") is False:
+            continue
+        name, handicap, outcome_names = meta[mid]
+        if name == "Over Under Full Time" and handicap not in OVER_UNDER_LINES:
+            continue
+        for oid, outcome in (market.get("outcomes") or {}).items():
+            p = (outcome.get("players") or {}).get("0") or {}
+            if not p.get("price") or p.get("active") is False:
+                continue
+            label = outcome_names.get(oid)
+            if name == "Over Under Full Time":
+                key = f"{label}{handicap}" if label in ("Over", "Under") else None
+            else:
+                key = OUTCOME_TO_KEY[name].get(label)
+            if key:
+                prices[key] = float(p["price"])
+    return prices
 
 
 def main():
@@ -179,13 +225,14 @@ def main():
     needed = {int(fx[k]) for fxs in responses.values() for fx in fxs
               for k in ("participant1Id", "participant2Id") if fx.get(k)}
     names = load_team_names(conn, needed)
+    meta = load_market_meta(conn)
 
     unmatched = set()
     for slug, label in books:
         saved = 0
         for fx in responses.get(slug, []):
             league = TOURNAMENTS.get(fx.get("tournamentId"))
-            prices = parse_1x2((fx.get("bookmakerOdds") or {}).get(slug))
+            prices = parse_markets((fx.get("bookmakerOdds") or {}).get(slug), meta)
             if not league or not prices or not fx.get("startTime"):
                 continue
             home = names.get(int(fx["participant1Id"]), "?")
@@ -199,8 +246,8 @@ def main():
                 cur.execute(f"""
                     INSERT INTO {table} (match_id, bookmaker, market,
                                          selection, odds, snapshot_time)
-                    VALUES (?, ?, '1X2', ?, ?, ?)
-                """, (match_id, label, selection, odds, snapshot_time))
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (match_id, label, market_of(selection), selection, odds, snapshot_time))
             saved += 1
         print(f"  -> {label}: quote salvate per {saved} partite")
     conn.commit()
