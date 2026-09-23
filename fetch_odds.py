@@ -26,6 +26,7 @@ import difflib
 import json
 import os
 import re
+import unicodedata
 import sqlite3
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -63,6 +64,9 @@ REFERENCE_BOOKMAKER = ("pinnacle", "Pinnacle")
 # database la prima volta (1 sola richiesta, poi mai più).
 WANTED_MARKETS = {"Full Time Result", "Double Chance Full Time",
                   "Both Teams To Score", "Over Under Full Time"}
+SCORER_MARKET = "Anytime Goal Scorer"   # marcatore in qualsiasi momento
+# I bookmaker aprono i marcatori solo 1-3 giorni prima della partita:
+# prima di allora questo mercato semplicemente non c'è (è normale).
 OVER_UNDER_LINES = {1.5, 2.5, 3.5}
 OUTCOME_TO_KEY = {
     "Full Time Result": {"1": "Home", "X": "Draw", "2": "Away"},
@@ -164,16 +168,22 @@ def load_market_meta(conn):
     conn.execute("""CREATE TABLE IF NOT EXISTS oddspapi_markets (
                         market_id INTEGER PRIMARY KEY, name TEXT, handicap REAL,
                         outcomes TEXT)""")
-    if not conn.execute("SELECT 1 FROM oddspapi_markets LIMIT 1").fetchone():
+    has_scorer = conn.execute("SELECT 1 FROM oddspapi_markets WHERE name = ?",
+                              (SCORER_MARKET,)).fetchone()
+    if not has_scorer:  # prima volta, o anagrafica salvata prima dei marcatori
         print("  Scarico l'anagrafica dei mercati (1 richiesta, solo la prima volta)...")
         data = api_get("/markets", sportId=10)
         rows = []
         for m in data if isinstance(data, list) else []:
-            if m.get("marketName") in WANTED_MARKETS and not m.get("playerProp"):
+            # il filtro sportId dell'API non filtra davvero: lo rifacciamo noi
+            if m.get("sportId") != 10:
+                continue
+            name = m.get("marketName")
+            if (name in WANTED_MARKETS and not m.get("playerProp")) or name == SCORER_MARKET:
                 outcomes = {str(o["outcomeId"]): o.get("outcomeName")
                             for o in m.get("outcomes") or []}
-                rows.append((m["marketId"], m["marketName"], m.get("handicap"),
-                             json.dumps(outcomes)))
+                rows.append((m["marketId"], name, m.get("handicap"), json.dumps(outcomes)))
+        conn.execute("DELETE FROM oddspapi_markets")
         conn.executemany("INSERT OR REPLACE INTO oddspapi_markets VALUES (?, ?, ?, ?)", rows)
         conn.commit()
         print(f"    {len(rows)} mercati utili salvati")
@@ -182,12 +192,23 @@ def load_market_meta(conn):
 
 
 def parse_markets(book_data, meta):
-    """Tutte le quote utili di un bookmaker per una partita: {selezione: quota}."""
-    prices = {}
+    """Tutte le quote utili di un bookmaker per una partita.
+    Ritorna ({selezione: quota}, {nome giocatore: quota marcatore})."""
+    prices, scorers = {}, {}
     for mid, market in ((book_data or {}).get("markets") or {}).items():
         if mid not in meta or market.get("marketActive") is False:
             continue
         name, handicap, outcome_names = meta[mid]
+        if name == SCORER_MARKET:
+            # qui le quote sono per giocatore: la chiave è l'id del giocatore
+            for oid, outcome in (market.get("outcomes") or {}).items():
+                if outcome_names.get(oid) == "No":
+                    continue
+                for pid, p in (outcome.get("players") or {}).items():
+                    if pid != "0" and p.get("playerName") and p.get("price") \
+                            and p.get("active") is not False:
+                        scorers[p["playerName"]] = float(p["price"])
+            continue
         if name == "Over Under Full Time" and handicap not in OVER_UNDER_LINES:
             continue
         for oid, outcome in (market.get("outcomes") or {}).items():
@@ -201,7 +222,46 @@ def parse_markets(book_data, meta):
                 key = OUTCOME_TO_KEY[name].get(label)
             if key:
                 prices[key] = float(p["price"])
-    return prices
+    return prices, scorers
+
+
+# ---------------------------------------------------------------------------
+# Nomi dei marcatori: il bookmaker scrive "Cognome, Nome" (es. "Vlahovic,
+# Dusan"), BSD scrive "Nome Cognome" (es. "Dušan Vlahović"). Li colleghiamo
+# cercando SOLO tra i giocatori delle due squadre di quella partita.
+# ---------------------------------------------------------------------------
+def _person_tokens(name):
+    if "," in name:
+        last, first = name.split(",", 1)
+        name = f"{first} {last}"
+    name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    return re.findall(r"[a-z]+", name)
+
+
+def _person_score(a, b):
+    ta, tb = _person_tokens(a), _person_tokens(b)
+    if not ta or not tb:
+        return 0
+    if set(ta) == set(tb):
+        return 1.0
+    short, long_ = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    if set(short) <= set(long_):
+        return 0.95        # es. "Vitinha" / "Vitor Machado Ferreira Vitinha"
+    if ta[-1] == tb[-1] and ta[0][0] == tb[0][0]:
+        return 0.9         # stesso cognome e stessa iniziale del nome
+    return difflib.SequenceMatcher(None, " ".join(ta), " ".join(tb)).ratio()
+
+
+def find_player_id(cur, match_id, name):
+    roster = cur.execute("""
+        SELECT pl.id, pl.name FROM players pl JOIN matches m
+          ON pl.team_id IN (m.home_team_id, m.away_team_id)
+        WHERE m.id = ? AND pl.name != ''
+    """, (match_id,)).fetchall()
+    scored = sorted(((_person_score(name, n), pid) for pid, n in roster), reverse=True)
+    if scored and scored[0][0] >= 0.85 and (len(scored) == 1 or scored[1][0] < scored[0][0]):
+        return scored[0][1]
+    return None
 
 
 def main():
@@ -229,10 +289,10 @@ def main():
 
     unmatched = set()
     for slug, label in books:
-        saved = 0
+        saved, scorer_rows, scorer_matches = 0, 0, 0
         for fx in responses.get(slug, []):
             league = TOURNAMENTS.get(fx.get("tournamentId"))
-            prices = parse_markets((fx.get("bookmakerOdds") or {}).get(slug), meta)
+            prices, scorers = parse_markets((fx.get("bookmakerOdds") or {}).get(slug), meta)
             if not league or not prices or not fx.get("startTime"):
                 continue
             home = names.get(int(fx["participant1Id"]), "?")
@@ -249,7 +309,17 @@ def main():
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (match_id, label, market_of(selection), selection, odds, snapshot_time))
             saved += 1
-        print(f"  -> {label}: quote salvate per {saved} partite")
+            if table == "odds_snapshots":   # marcatori: solo bookmaker giocabili
+                for player_name, odds in scorers.items():
+                    cur.execute("""INSERT INTO scorer_odds (match_id, bookmaker, player_name,
+                                       player_id, odds, snapshot_time) VALUES (?, ?, ?, ?, ?, ?)""",
+                                (match_id, label, player_name,
+                                 find_player_id(cur, match_id, player_name), odds, snapshot_time))
+                scorer_rows += len(scorers)
+                scorer_matches += bool(scorers)
+        print(f"  -> {label}: quote salvate per {saved} partite"
+              + (f", marcatori per {scorer_matches} partite ({scorer_rows} giocatori)"
+                 if scorer_matches else ""))
     conn.commit()
     conn.close()
 
