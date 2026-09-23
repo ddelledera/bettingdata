@@ -11,7 +11,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
-from markets import is_winner, long_label
+from markets import is_winner, is_scorer, long_label
 
 DB_PATH = "data.db"
 SLIPS_PATH = "tracked_slips.json"
@@ -40,6 +40,23 @@ def get_match_result(conn, match_id):
     return row
 
 
+def get_scorer_result(conn, match_id, selection):
+    """Esito di una scommessa marcatore dai dati giocatore BSD:
+    True/False = segna o no, "void" = non ha giocato (il bookmaker rimborsa),
+    None = statistiche della partita non ancora scaricate."""
+    player_id = int(selection.split(":", 1)[1])
+    event = conn.execute("SELECT id, stats_done FROM bsd_events WHERE match_id = ?",
+                         (match_id,)).fetchone()
+    if event is None or not event[1]:
+        return None
+    row = conn.execute("""SELECT goals, minutes FROM player_match_stats
+                          WHERE player_id = ? AND match_bsd_id = ?""",
+                       (player_id, event[0])).fetchone()
+    if row is None or not row[1]:
+        return "void"
+    return (row[0] or 0) >= 1
+
+
 def main():
     slips = load_slips()
     if not slips:
@@ -63,12 +80,24 @@ def main():
                 all_played = False
                 break
             hg, ag = score
+            void = False
+            if is_scorer(leg["selection"]):
+                outcome = get_scorer_result(conn, leg["match_id"], leg["selection"])
+                if outcome is None:
+                    all_played = False   # aspettiamo le statistiche giocatore
+                    break
+                void = outcome == "void"
+                won = True if void else outcome
+            else:
+                # 1X2, doppia chance, Goal/No Goal, Under/Over: dal risultato
+                won = is_winner(leg["selection"], hg, ag)
             results.append({
                 "match_label": leg["match_label"],
-                "selection": long_label(leg["selection"]),
-                "actual_result": f"{hg}-{ag}",
-                # vale per tutti i mercati: 1X2, doppia chance, Goal/No Goal, Under/Over
-                "won": is_winner(leg["selection"], hg, ag),
+                "selection": leg.get("label") or long_label(leg["selection"]),
+                "actual_result": f"{hg}-{ag}" + (" (non ha giocato: rimborsata)" if void else ""),
+                "won": won,
+                "void": void,
+                "odds": leg.get("odds"),
             })
 
         if not all_played:
@@ -77,6 +106,10 @@ def main():
 
         all_won = all(r["won"] for r in results)
         combined_odds = slip["combined_odds"]
+        # una selezione rimborsata (marcatore che non ha giocato) vale quota 1
+        for r in results:
+            if r["void"] and r["odds"]:
+                combined_odds /= r["odds"]
         stake = slip["stake"]
         payout = stake * combined_odds if all_won else 0.0
         profit = payout - stake
