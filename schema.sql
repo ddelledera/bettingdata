@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS players (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bsd_id INTEGER UNIQUE,
     name TEXT NOT NULL,
-    team_id INTEGER REFERENCES teams(id)
+    team_id INTEGER REFERENCES teams(id),   -- squadra ATTUALE (dalla rosa BSD)
+    availability TEXT,                      -- es. "available", "injured"
+    injury_type TEXT
 );
 
 -- Le statistiche di un giocatore in UNA partita già giocata — la "materia
@@ -103,3 +105,26 @@ CREATE TABLE IF NOT EXISTS reference_odds (
     snapshot_time TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_reference_odds_match ON reference_odds(match_id);
+
+-- Partite già giocate secondo BSD, collegate (quando possibile) alla nostra
+-- tabella matches. stats_done = 1 quando abbiamo già scaricato le
+-- statistiche giocatore di quella partita (così non le riscarichiamo).
+CREATE TABLE IF NOT EXISTS bsd_events (
+    id INTEGER PRIMARY KEY,               -- id della partita su BSD
+    league TEXT NOT NULL,
+    event_date TEXT NOT NULL,
+    home_bsd_team_id INTEGER NOT NULL,
+    away_bsd_team_id INTEGER NOT NULL,
+    home_team_name TEXT,
+    away_team_name TEXT,
+    match_id INTEGER REFERENCES matches(id),
+    stats_done INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_bsd_events_date ON bsd_events(event_date);
+
+-- Corrispondenza squadra BSD -> nostra squadra (ricavata dalle partite
+-- collegate: se la partita BSD e' la nostra, le due squadre coincidono).
+CREATE TABLE IF NOT EXISTS bsd_teams (
+    bsd_id INTEGER PRIMARY KEY,
+    team_id INTEGER NOT NULL REFERENCES teams(id)
+);
