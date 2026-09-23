@@ -40,6 +40,12 @@ BASE_URL = "https://sports.bzzoiro.com/api/v2"
 # ID dei campionati su BSD -> nome nel nostro database
 LEAGUES = {4: "Serie A", 1: "Premier League", 3: "La Liga",
            5: "Bundesliga", 6: "Ligue 1"}
+# Coppe europee: gli ID li cerchiamo per nome nell'elenco /leagues di BSD.
+# Servono soprattutto per i RISULTATI di Europa e Conference League, che la
+# nostra fonte gratuita (football-data.org) non fornisce: senza, le schedine
+# con quelle partite resterebbero "in attesa" per sempre.
+CUPS = {"champions league": "Champions League", "europa league": "Europa League",
+        "conference league": "Conference League"}
 HISTORY_FROM = "2025-07-01"   # stagione scorsa + stagione in corso
 MAX_EVENTS_PER_RUN = 700      # 2 richieste ciascuna: ~1.400 per esecuzione
 
@@ -80,18 +86,34 @@ def _get_all(path, **params):
 # ---------------------------------------------------------------------------
 # 1. Partite giocate
 # ---------------------------------------------------------------------------
-def sync_events(cur):
+def find_cup_leagues():
+    found = {}
+    for lg in _get_all("/leagues/"):
+        name = (lg.get("name") or "").lower()
+        if lg.get("is_women"):
+            continue
+        for key, ours in CUPS.items():
+            if key in name and ours not in found.values() and "qualif" not in name:
+                found[lg["id"]] = ours
+    print(f"  Coppe trovate su BSD: {found or 'nessuna'}")
+    return found
+
+
+def sync_events(cur, leagues):
     today = date.today().isoformat()
-    for league_id, league in LEAGUES.items():
+    for league_id, league in leagues.items():
         events = _get_all("/events/", league_id=league_id, status="finished",
                           date_from=HISTORY_FROM, date_to=today)
         for e in events:
             cur.execute("""
-                INSERT OR IGNORE INTO bsd_events (id, league, event_date,
-                    home_bsd_team_id, away_bsd_team_id, home_team_name, away_team_name)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO bsd_events (id, league, event_date, home_bsd_team_id,
+                    away_bsd_team_id, home_team_name, away_team_name, home_score, away_score)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET home_score = excluded.home_score,
+                                              away_score = excluded.away_score
             """, (e["id"], league, e["event_date"], e["home_team_id"],
-                  e["away_team_id"], e.get("home_team"), e.get("away_team")))
+                  e["away_team_id"], e.get("home_team"), e.get("away_team"),
+                  e.get("home_score"), e.get("away_score")))
         print(f"  {league}: {len(events)} partite giocate su BSD")
 
     # collega alle nostre partite quelle non ancora collegate
@@ -105,6 +127,21 @@ def sync_events(cur):
             linked += 1
     print(f"  Collegate alle nostre partite: {linked} nuove "
           f"({len(unlinked) - linked} ancora da collegare)")
+
+
+def sync_cup_results(cur):
+    """Scrive il risultato finale delle partite di coppa collegate che nel
+    nostro database non ce l'hanno ancora (Europa e Conference League)."""
+    cur.execute("""
+        UPDATE matches SET
+            home_goals = (SELECT e.home_score FROM bsd_events e WHERE e.match_id = matches.id),
+            away_goals = (SELECT e.away_score FROM bsd_events e WHERE e.match_id = matches.id)
+        WHERE home_goals IS NULL
+          AND league IN ('Champions League', 'Europa League', 'Conference League')
+          AND id IN (SELECT match_id FROM bsd_events
+                     WHERE match_id IS NOT NULL AND home_score IS NOT NULL)
+    """)
+    print(f"  Risultati di coppa aggiornati: {cur.rowcount}")
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +261,8 @@ def main():
     cur = conn.cursor()
 
     print("1. Partite giocate")
-    sync_events(cur)
+    sync_events(cur, {**LEAGUES, **find_cup_leagues()})
+    sync_cup_results(cur)
     conn.commit()
     print("2. Statistiche giocatori")
     sync_player_stats(cur, conn)
