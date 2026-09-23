@@ -352,7 +352,8 @@ def load_upcoming_player_predictions(conn):
     query = """
         SELECT pl.name AS player, t.name AS team, m.id AS match_id, m.date, m.league,
                ht.name AS home_team, at.name AS away_team,
-               pp.expected_goals, pp.prob_score_anytime
+               pp.expected_goals, pp.prob_score_anytime,
+               pp.expected_minutes, pp.starting_probability
         FROM player_predictions pp
         JOIN players pl ON pl.id = pp.player_id
         JOIN teams t ON t.id = pl.team_id
@@ -369,6 +370,8 @@ def render_scorer_card(row):
     """Disegna una scheda per la probabilità di un giocatore di segnare,
     nello stesso stile delle schede 'in evidenza' delle opportunità."""
     avversario = row["away_team"] if row["team"] == row["home_team"] else row["home_team"]
+    minuti = f"{row['expected_minutes']:.0f}'" if pd.notna(row.get("expected_minutes")) else "—"
+    titolare = f"{row['starting_probability']:.0%}" if pd.notna(row.get("starting_probability")) else "—"
     st.markdown(f"""
     <div class="spot-card">
         <div class="spot-league">{row['league'].upper()}</div>
@@ -377,6 +380,8 @@ def render_scorer_card(row):
         <div class="spot-ev-label">probabilità di segnare (nostro modello) — {row['date']}</div>
         <div class="spot-details">
             <span>Gol attesi <b>{row['expected_goals']:.2f}</b></span>
+            <span>Minuti attesi <b>{minuti}</b></span>
+            <span>Titolare <b>{titolare}</b></span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -822,14 +827,51 @@ with tab_marcatori:
             "aggiornamento automatico potrebbe non essere ancora passato."
         )
     else:
-        min_prob = st.slider("Mostra solo giocatori con probabilità di segnare almeno:",
-                              min_value=0, max_value=80, value=20, format="%d%%") / 100
-        filtered_players = player_predictions_df[player_predictions_df["prob_score_anytime"] >= min_prob]
+        df = player_predictions_df.copy()
+        df["partita"] = df["home_team"] + " - " + df["away_team"] + "  (" + df["date"] + ")"
 
-        if filtered_players.empty:
-            st.info("Nessun giocatore sopra la soglia scelta. Prova ad abbassarla.")
+        # Filtri a cascata: ogni menu mostra solo le voci ancora possibili
+        # dopo le scelte precedenti (competizione -> partita -> squadra).
+        df = competition_filter(df, key="comp_marcatori")
+
+        f1, f2 = st.columns(2)
+        with f1:
+            partite = ["Tutte le partite"] + sorted(df["partita"].unique(),
+                                                    key=lambda p: (p[-11:], p))
+            partita = st.selectbox("Partita:", partite, key="marc_partita")
+        if partita != "Tutte le partite":
+            df = df[df["partita"] == partita]
+        with f2:
+            squadre = st.multiselect("Squadra (vuoto = tutte):", sorted(df["team"].unique()),
+                                     key="marc_squadre")
+        if squadre:
+            df = df[df["team"].isin(squadre)]
+
+        f3, f4, f5 = st.columns([2, 1, 1])
+        with f3:
+            min_prob = st.slider("Probabilità di segnare almeno:",
+                                 min_value=0, max_value=80, value=20, format="%d%%",
+                                 key="marc_prob") / 100
+        with f4:
+            ordine = st.radio("Ordina per:", ["Probabilità", "Gol attesi"], key="marc_ordine")
+        with f5:
+            solo_titolari = st.checkbox("Solo probabili titolari", key="marc_titolari",
+                                        help="Titolare in almeno 3 delle ultime 5 partite della squadra.")
+
+        df = df[df["prob_score_anytime"] >= min_prob]
+        if solo_titolari:
+            df = df[df["starting_probability"].fillna(0) >= 0.6]
+        df = df.sort_values("prob_score_anytime" if ordine == "Probabilità" else "expected_goals",
+                            ascending=False)
+
+        MAX_SCHEDE = 60
+        if df.empty:
+            st.info("Nessun giocatore con questi filtri. Prova ad abbassare la soglia "
+                    "o ad allargare la selezione.")
         else:
-            records = filtered_players.to_dict("records")
+            st.subheader(f"{len(df)} giocatori"
+                         + (f" — mostrati i primi {MAX_SCHEDE}" if len(df) > MAX_SCHEDE else ""))
+            records = df.head(MAX_SCHEDE).to_dict("records")
             for i in range(0, len(records), 3):
                 row_chunk = records[i:i + 3]
                 cols = st.columns(3)
