@@ -164,6 +164,18 @@ class DixonColesModel:
         }
         return self
 
+    def expected_goals(self, home_team, away_team):
+        """Ritorna (gol attesi squadra di casa, gol attesi squadra ospite)
+        per questa partita — il 'lambda' del modello Dixon-Coles, prima di
+        essere trasformato in probabilità 1X2. Serve come base per
+        distribuire i gol attesi tra i singoli giocatori."""
+        a = self.params["attack"]
+        d = self.params["defense"]
+        home_adv = self.params["home_adv"]
+        lam_home = float(np.exp(a[home_team] - d[away_team] + home_adv))
+        lam_away = float(np.exp(a[away_team] - d[home_team]))
+        return lam_home, lam_away
+
     def predict_match(self, home_team, away_team, max_goals=8):
         """Restituisce (prob_vittoria_casa, prob_pareggio, prob_vittoria_trasferta)."""
         a = self.params["attack"]
