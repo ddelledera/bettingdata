@@ -303,6 +303,20 @@ def main():
                 continue
             table = "reference_odds" if slug == REFERENCE_BOOKMAKER[0] else "odds_snapshots"
             for selection, odds in prices.items():
+                # Salviamo una nuova "fotografia" solo se la quota è cambiata
+                # dall'ultima volta: stesso storico dei movimenti, ma senza
+                # riempire il database di righe identiche a ogni esecuzione.
+                last = cur.execute(f"""SELECT odds FROM {table}
+                                       WHERE match_id = ? AND bookmaker = ? AND selection = ?
+                                       ORDER BY snapshot_time DESC LIMIT 1""",
+                                   (match_id, label, selection)).fetchone()
+                if last and abs(last[0] - odds) < 1e-9:
+                    cur.execute(f"""UPDATE {table} SET snapshot_time = ?
+                                    WHERE id = (SELECT id FROM {table}
+                                                WHERE match_id = ? AND bookmaker = ? AND selection = ?
+                                                ORDER BY snapshot_time DESC LIMIT 1)""",
+                                (snapshot_time, match_id, label, selection))
+                    continue
                 cur.execute(f"""
                     INSERT INTO {table} (match_id, bookmaker, market,
                                          selection, odds, snapshot_time)
