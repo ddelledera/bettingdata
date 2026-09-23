@@ -60,20 +60,30 @@ def list_leagues(conn):
 
 
 def save_prediction(conn, match_id, prob_home, prob_draw, prob_away,
-                     expected_goals_home=None, expected_goals_away=None):
+                     expected_goals_home=None, expected_goals_away=None, extra=None):
+    """extra: probabilità dei mercati sui gol (Goal/No Goal, Under/Over)."""
+    extra = extra or {}
     conn.execute("""
         INSERT INTO model_predictions (match_id, prob_home, prob_draw, prob_away,
-                                        expected_goals_home, expected_goals_away, computed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+                                        expected_goals_home, expected_goals_away,
+                                        prob_btts, prob_over15, prob_over25, prob_over35,
+                                        computed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(match_id) DO UPDATE SET
             prob_home = excluded.prob_home,
             prob_draw = excluded.prob_draw,
             prob_away = excluded.prob_away,
             expected_goals_home = excluded.expected_goals_home,
             expected_goals_away = excluded.expected_goals_away,
+            prob_btts = excluded.prob_btts,
+            prob_over15 = excluded.prob_over15,
+            prob_over25 = excluded.prob_over25,
+            prob_over35 = excluded.prob_over35,
             computed_at = excluded.computed_at
     """, (match_id, prob_home, prob_draw, prob_away, expected_goals_home,
-          expected_goals_away, datetime.now(timezone.utc).isoformat()))
+          expected_goals_away, extra.get("prob_btts"), extra.get("prob_over15"),
+          extra.get("prob_over25"), extra.get("prob_over35"),
+          datetime.now(timezone.utc).isoformat()))
 
 
 EUROPEAN_COMPETITIONS = {"Champions League", "Europa League", "Conference League"}
@@ -112,7 +122,8 @@ def main():
                 continue  # squadra mai vista nei dati storici: non possiamo stimarla
             ph, pd_, pa = model.predict_match(home, away)
             eg_home, eg_away = model.expected_goals(home, away)
-            save_prediction(conn, match_id, ph, pd_, pa, eg_home, eg_away)
+            save_prediction(conn, match_id, ph, pd_, pa, eg_home, eg_away,
+                            model.market_probabilities(home, away))
             predicted += 1
             print(f"    {home} vs {away}: casa {ph:.0%}  pareggio {pd_:.0%}  trasferta {pa:.0%}")
 
@@ -155,6 +166,9 @@ def main():
                         continue
                     ph, pd_, pa = euro_model.predict_match(home, away)
                     eg_home, eg_away = euro_model.expected_goals(home, away)
+                    # Niente mercati sui gol per le coppe, per ora: il modello
+                    # europeo stima un numero di gol irrealistico (da sistemare),
+                    # e Under/Over e Goal/No Goal ne dipendono direttamente.
                     save_prediction(conn, match_id, ph, pd_, pa, eg_home, eg_away)
                     predicted += 1
                     print(f"    {home} vs {away}: casa {ph:.0%}  pareggio {pd_:.0%}  trasferta {pa:.0%}")
