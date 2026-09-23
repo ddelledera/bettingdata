@@ -1,11 +1,16 @@
 """
-Esplorazione BSD (Bzzoiro Sports Data): invece di indovinare di nuovo i
-nomi degli endpoint, chiediamo all'API cosa c'è davvero.
-NON tocca data.db. BSD dichiara nessun limite di richieste.
+Esplorazione BSD, secondo giro. Dal primo abbiamo scoperto:
+  - ID campionati: Serie A 4, Premier 1, La Liga 3, Bundesliga 5, Ligue 1 6
+  - rosa: /players/?team_id=X ; statistiche: /players/{id}/stats/ (partita
+    per partita, ma SENZA data e mescolando più stagioni)
+Ora verifichiamo: squadre per campionato, partite giocate con data, e se
+esistono statistiche giocatore PER PARTITA (molte meno richieste).
+NON tocca data.db.
 """
 
 import json
 import os
+from datetime import date, timedelta
 
 import requests
 
@@ -16,10 +21,9 @@ HEAD = {"Authorization": f"Token {os.environ.get('BSD_API_KEY', '')}"}
 def get(path, **params):
     r = requests.get(f"{BASE}{path}", headers=HEAD, params=params, timeout=30)
     try:
-        data = r.json()
+        return r.status_code, r.json()
     except ValueError:
-        data = r.text[:300]
-    return r.status_code, data
+        return r.status_code, r.text[:300]
 
 
 def items(data):
@@ -28,55 +32,59 @@ def items(data):
     return data if isinstance(data, list) else []
 
 
-def show(title, status, data, n=3):
+def show(title, status, data, n=2, width=500):
     print(f"\n=== {title} -> {status}")
     lst = items(data)
     if isinstance(data, dict) and "count" in data:
         print(f"  totale: {data['count']}")
-    if lst:
-        print(f"  campi: {sorted(lst[0].keys()) if isinstance(lst[0], dict) else type(lst[0])}")
+    if lst and isinstance(lst[0], dict):
+        print(f"  campi: {sorted(lst[0].keys())}")
         for x in lst[:n]:
-            print("  ", json.dumps(x, ensure_ascii=False)[:400])
+            print("  ", json.dumps(x, ensure_ascii=False)[:width])
+    elif isinstance(data, dict):
+        print(f"  campi: {sorted(data.keys())}")
+        print("  ", json.dumps(data, ensure_ascii=False)[:width])
     else:
-        print("  ", json.dumps(data, ensure_ascii=False)[:600])
+        print("  ", str(data)[:width])
 
 
-# 1. Campionati: cerchiamo gli ID dei 5 principali
-s, d = get("/leagues/", limit=200)
-show("/leagues/", s, d, n=0)
-for lg in items(d):
-    txt = json.dumps(lg, ensure_ascii=False).lower()
-    if any(k in txt for k in ("serie a", "premier league", "laliga", "la liga",
-                              "bundesliga", "ligue 1")):
-        print("   ", json.dumps(lg, ensure_ascii=False)[:250])
+def accepted(path):
+    """Un parametro inventato fa rispondere all'API con quelli accettati."""
+    s, d = get(path, parametro_inesistente=1)
+    acc = d.get("accepted_parameters") if isinstance(d, dict) else None
+    print(f"\n=== parametri accettati da {path}: {acc if acc else (s, str(d)[:200])}")
 
-# 2. Squadre per nome (il parametro giusto è 'name')
-for nome in ("Inter", "Manchester City", "Man City"):
-    s, d = get("/teams/", name=nome, limit=5)
-    show(f"/teams/?name={nome}", s, d)
 
-# 3. Rosa e statistiche di una squadra: proviamo le varianti possibili
-s, d = get("/teams/", name="Inter", limit=5)
-team = next(iter(items(d)), None)
-if team:
-    tid = team["id"]
-    player = None
-    for path, params in ((f"/teams/{tid}/players/", {}),
-                         ("/players/", {"team_id": tid}),
-                         ("/players/", {"team": tid}),
-                         (f"/teams/{tid}/squad/", {}),
-                         (f"/teams/{tid}/", {})):
-        s, d = get(path, **params)
-        show(f"{path} {params}", s, d, n=2)
-        if s == 200 and items(d) and player is None and "players" in path:
-            player = items(d)[0]
-    if player:
-        pid = player.get("id") or player.get("player_id")
-        for path in (f"/players/{pid}/", f"/players/{pid}/stats/",
-                     f"/players/{pid}/season-stats/"):
-            s, d = get(path)
-            show(path, s, d, n=2)
-        s, d = get("/player-stats/", player_id=pid, limit=3)
-        show("/player-stats/?player_id=", s, d, n=2)
+# 1. Squadre della Serie A
+s, d = get("/teams/", league_id=4, limit=50)
+print(f"\n=== /teams/?league_id=4 -> {s}, totale {d.get('count') if isinstance(d, dict) else '?'}")
+teams = items(d)
+print("  ", ", ".join(f"{t['name']} ({t['id']})" for t in teams))
+
+# 2. Parametri accettati dagli endpoint che ci servono
+accepted("/events/")
+if teams:
+    s, d = get("/players/", team_id=teams[0]["id"], limit=1)
+    pl = next(iter(items(d)), None)
+    if pl:
+        accepted(f"/players/{pl['id']}/stats/")
+
+# 3. Partite di Serie A già giocate nelle ultime 3 settimane
+oggi = date.today()
+s, d = get("/events/", league_id=4, date_from=(oggi - timedelta(days=21)).isoformat(),
+           date_to=oggi.isoformat(), limit=50)
+show("/events/?league_id=4 ultime 3 settimane", s, d, n=2)
+finite = [e for e in items(d)
+          if str(e.get("status", "")).lower() in ("finished", "ft", "ended", "completed")]
+print(f"  di cui finite: {len(finite)}")
+
+# 4. Sotto-risorse di una partita finita
+ev = (finite or items(d) or [None])[0]
+if ev:
+    eid = ev["id"]
+    for sub in ("", "player-stats/", "players/", "player_stats/", "stats/",
+                "lineups/", "incidents/", "odds/"):
+        s, d = get(f"/events/{eid}/{sub}")
+        show(f"/events/{eid}/{sub}", s, d, n=2, width=700)
 
 print("\nFatto.")
