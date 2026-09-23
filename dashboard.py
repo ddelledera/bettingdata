@@ -334,6 +334,41 @@ BOOKMAKER_ITALIA = {"Unibet", "Codere"}
 # anche questo non è garantito al 100% essere l'entità italiana.
 
 
+def load_upcoming_player_predictions(conn):
+    """Previsioni marcatori per le partite in arrivo, con nome squadra e avversario."""
+    query = """
+        SELECT pl.name AS player, t.name AS team, m.id AS match_id, m.date, m.league,
+               ht.name AS home_team, at.name AS away_team,
+               pp.expected_goals, pp.prob_score_anytime
+        FROM player_predictions pp
+        JOIN players pl ON pl.id = pp.player_id
+        JOIN teams t ON t.id = pl.team_id
+        JOIN matches m ON m.id = pp.match_id
+        JOIN teams ht ON ht.id = m.home_team_id
+        JOIN teams at ON at.id = m.away_team_id
+        WHERE m.date >= date('now')
+        ORDER BY pp.prob_score_anytime DESC
+    """
+    return pd.read_sql_query(query, conn)
+
+
+def render_scorer_card(row):
+    """Disegna una scheda per la probabilità di un giocatore di segnare,
+    nello stesso stile delle schede 'in evidenza' delle opportunità."""
+    avversario = row["away_team"] if row["team"] == row["home_team"] else row["home_team"]
+    st.markdown(f"""
+    <div class="spot-card">
+        <div class="spot-league">{row['league'].upper()}</div>
+        <div class="spot-teams">{row['player']}<br><span style="font-size:0.85rem; font-weight:400; color:#8FBFA3;">{row['team']} vs {avversario}</span></div>
+        <div class="spot-ev-value">{row['prob_score_anytime']:.0%}</div>
+        <div class="spot-ev-label">probabilità di segnare (nostro modello) — {row['date']}</div>
+        <div class="spot-details">
+            <span>Gol attesi <b>{row['expected_goals']:.2f}</b></span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def competition_filter(matches_df, key):
     """Mostra un selettore di competizioni (una, più di una, o tutte) e
     ritorna solo le partite di quelle scelte. Usata in ogni scheda."""
@@ -481,8 +516,8 @@ if matches_df.empty:
              "Torna più tardi, oppure aggiorna i dati.")
     st.stop()
 
-tab_opportunita, tab_schedina, tab_storico, tab_tutte = st.tabs(
-    ["🎯 Opportunità di valore", "🎟️ Schedina", "📊 Storico schedine", "📋 Tutte le partite"]
+tab_opportunita, tab_schedina, tab_storico, tab_marcatori, tab_tutte = st.tabs(
+    ["🎯 Opportunità di valore", "🎟️ Schedina", "📊 Storico schedine", "⚽ Marcatori", "📋 Tutte le partite"]
 )
 
 # ---------------------------------------------------------------------------
@@ -750,7 +785,48 @@ with tab_storico:
             c3.metric("Profitto totale", f"€{total_profit:+.2f}")
 
 # ---------------------------------------------------------------------------
-# SCHEDA 4: Tutte le partite in arrivo
+# SCHEDA 4: Marcatori (probabilità di segnare, senza confronto con le quote
+# — non abbiamo ancora una fonte di quote sui marcatori verificata)
+# ---------------------------------------------------------------------------
+with tab_marcatori:
+    st.caption(
+        "Probabilità che ogni giocatore segni almeno un gol, secondo il nostro modello "
+        "(distribuiamo i gol attesi della squadra tra i giocatori in base al loro "
+        "rendimento stagionale). Non c'è ancora un confronto con le quote reali dei "
+        "bookmaker su questo mercato specifico, quindi questa scheda ti aiuta a farti "
+        "un'idea, non calcola un valore atteso come le altre schede."
+    )
+
+    try:
+        player_predictions_df = load_upcoming_player_predictions(conn)
+    except Exception:
+        player_predictions_df = pd.DataFrame()
+
+    if player_predictions_df.empty:
+        st.info(
+            "Nessuna previsione marcatori disponibile al momento. Questa è una "
+            "funzione nuova — se hai appena attivato la fonte dati, il primo "
+            "aggiornamento automatico potrebbe non essere ancora passato."
+        )
+    else:
+        min_prob = st.slider("Mostra solo giocatori con probabilità di segnare almeno:",
+                              min_value=0, max_value=80, value=20, format="%d%%") / 100
+        filtered_players = player_predictions_df[player_predictions_df["prob_score_anytime"] >= min_prob]
+
+        if filtered_players.empty:
+            st.info("Nessun giocatore sopra la soglia scelta. Prova ad abbassarla.")
+        else:
+            records = filtered_players.to_dict("records")
+            for i in range(0, len(records), 3):
+                row_chunk = records[i:i + 3]
+                cols = st.columns(3)
+                for col, row in zip(cols, row_chunk):
+                    with col:
+                        render_scorer_card(row)
+                st.write("")
+
+# ---------------------------------------------------------------------------
+# SCHEDA 5: Tutte le partite in arrivo
 # ---------------------------------------------------------------------------
 with tab_tutte:
     filtered_df = competition_filter(matches_df, key="comp_tutte")
