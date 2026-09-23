@@ -55,7 +55,9 @@ def find_value_bets(model_probabilities, odds_dict, min_ev=0.02):
     """
     results = []
     for selection, prob in model_probabilities.items():
-        odds = odds_dict[selection]
+        odds = odds_dict.get(selection)
+        if not odds or not prob:
+            continue  # quota non disponibile per questo esito/mercato
         ev = expected_value(prob, odds)
         if ev >= min_ev:
             results.append({
@@ -104,50 +106,87 @@ def find_best_combination(legs_by_match, num_matches, target_roi):
     """
     Trova la combinazione di 'num_matches' partite che raggiunge un
     ritorno atteso almeno pari a 'target_roi' (es. 1.0 = vuoi raddoppiare
-    i soldi puntati), scegliendo — tra TUTTE le combinazioni possibili,
-    considerando anche quale selezione (1/X/2) usare per ciascuna
-    partita — quella con la probabilità combinata più alta, cioè la più
+    i soldi puntati) con la probabilità combinata più alta, cioè la più
     "sicura" tra quelle che comunque raggiungono il ritorno voluto.
 
-    A differenza di una versione più semplice che fissa in anticipo
-    "la selezione migliore" per ogni partita, qui il rischio entra
-    davvero nella scelta: per una partita può convenire usare una
-    selezione più sicura (quota più bassa) se questo permette di
-    raggiungere l'obiettivo con una combinazione complessiva più solida.
+    Per ogni partita si sceglie AL MASSIMO UNA selezione, tra tutti i
+    mercati disponibili (1X2, doppia chance, Goal/No Goal, Under/Over):
+    due esiti della stessa partita (es. "1" e "Over 2.5") sono legati tra
+    loro, e moltiplicarne le probabilità come se fossero indipendenti
+    darebbe una probabilità combinata falsa.
 
-    legs_by_match: dict {match_id: [leg, leg, ...]} — la LISTA delle
-        selezioni disponibili per quella partita (non una sola), ciascuna
-        con almeno "odds" e "model_probability".
-    num_matches: quante partite mettere in combinazione (es. 1-5).
-    target_roi: ritorno desiderato come frazione (es. 1.0 = +100%).
+    COME: con molti mercati per partita provare tutte le combinazioni è
+    impossibile (miliardi di casi). Usiamo la "programmazione dinamica":
+    si scorrono le partite una alla volta ricordando, per ogni numero di
+    selezioni già scelte e per ogni livello di quota raggiunto, la
+    combinazione più probabile finora. Risultato identico (a meno di
+    arrotondamenti di un decimillesimo sulla quota), in una frazione di secondo.
 
-    Ritorna: (combinazione scelta, ha_raggiunto_il_target) oppure None
-    se non ci sono abbastanza partite disponibili per formare la
-    combinazione richiesta.
+    legs_by_match: dict {match_id: [leg, leg, ...]}, ciascun leg con almeno
+        "odds" e "model_probability".
+    Ritorna: (combinazione scelta, ha_raggiunto_il_target) oppure None se
+    non ci sono abbastanza partite.
     """
-    from itertools import combinations, product
     import math
+    import numpy as np
 
-    match_ids = list(legs_by_match.keys())
-    if len(match_ids) < num_matches:
+    matches = [(mid, [l for l in legs if l["odds"] > 1 and l["model_probability"] > 0])
+               for mid, legs in legs_by_match.items()]
+    matches = [(mid, legs) for mid, legs in matches if legs]
+    if len(matches) < num_matches or num_matches < 1:
         return None
 
-    target_odds = 1 + target_roi
-    best_combo, best_prob = None, -1
-    fallback_combo, fallback_odds = None, -1
+    step = 0.0001                                  # precisione sul log della quota
+    # ogni quota viene arrotondata al passo più vicino (errore massimo mezzo
+    # passo per selezione): il tetto è quindi abbassato di k passi, e la
+    # combinazione trovata viene poi ricontrollata con le quote esatte.
+    top = max(1, math.ceil(math.log(1 + target_roi) / step) - num_matches)
+    k = num_matches
+    dp = np.full((k + 1, top + 1), -np.inf)
+    dp[0, 0] = 0.0
+    history = []                                   # per ricostruire la scelta
+    buckets = np.arange(top + 1)
 
-    for match_subset in combinations(match_ids, num_matches):
-        option_lists = [legs_by_match[mid] for mid in match_subset]
-        for combo in product(*option_lists):
-            combined_odds = math.prod(leg["odds"] for leg in combo)
-            combined_prob = math.prod(leg["model_probability"] for leg in combo)
+    for _, legs in matches:
+        new = dp.copy()
+        chosen_leg = np.full(dp.shape, -1)
+        prev_bucket = np.tile(buckets, (k + 1, 1))
+        for li, leg in enumerate(legs):
+            lp = math.log(leg["model_probability"])
+            s = round(math.log(leg["odds"]) / step)
+            dest = np.minimum(buckets + s, top)
+            for j in range(1, k + 1):
+                cand = dp[j - 1] + lp
+                # partite che non arrivano al tetto: spostamento semplice
+                free = dest < top
+                better = free & (cand > new[j, dest])
+                new[j, dest[better]] = cand[better]
+                chosen_leg[j, dest[better]] = li
+                prev_bucket[j, dest[better]] = buckets[better]
+                # tutte quelle che superano il tetto finiscono nello stesso punto
+                over = np.where(~free)[0]
+                if len(over):
+                    b = over[np.argmax(cand[over])]
+                    if cand[b] > new[j, top]:
+                        new[j, top] = cand[b]
+                        chosen_leg[j, top] = li
+                        prev_bucket[j, top] = b
+        history.append((chosen_leg, prev_bucket))
+        dp = new
 
-            if combined_odds >= target_odds and combined_prob > best_prob:
-                best_combo, best_prob = combo, combined_prob
+    if np.isfinite(dp[k, top]):
+        combo, j, b = [], k, top
+        for (mid, legs), (chosen_leg, prev_bucket) in zip(reversed(matches), reversed(history)):
+            li = chosen_leg[j, b]
+            if li >= 0:
+                combo.append(legs[li])
+                j, b = j - 1, prev_bucket[j, b]
+        combo = tuple(reversed(combo))
+        reached = math.prod(l["odds"] for l in combo) >= (1 + target_roi) - 1e-9
+        return combo, reached
 
-            if combined_odds > fallback_odds:
-                fallback_combo, fallback_odds = combo, combined_odds
-
-    if best_combo is not None:
-        return best_combo, True
-    return fallback_combo, False
+    # Obiettivo irraggiungibile: la combinazione con la quota più alta
+    # possibile (una selezione per partita, le partite con la quota massima).
+    best_per_match = sorted((max(legs, key=lambda l: l["odds"]) for _, legs in matches),
+                            key=lambda l: l["odds"], reverse=True)
+    return tuple(best_per_match[:num_matches]), False
