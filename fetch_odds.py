@@ -15,6 +15,7 @@ Con 5 campionati seguiti, girare questo script una volta al giorno costa
 
 import os
 import sqlite3
+from db_utils import init_db
 import requests
 from datetime import datetime, timezone
 from team_utils import normalize_team_name
@@ -97,8 +98,7 @@ def load_into_db(events, conn):
 
 def main():
     conn = sqlite3.connect(DB_PATH)
-    with open("schema.sql") as f:
-        conn.executescript(f.read())
+    init_db(conn)
 
     for sport_key, league_name in SPORT_KEYS.items():
         print(f"Scarico quote live: {league_name}...")
