@@ -37,8 +37,54 @@ CREATE TABLE IF NOT EXISTS model_predictions (
     prob_home REAL NOT NULL,
     prob_draw REAL NOT NULL,
     prob_away REAL NOT NULL,
+    expected_goals_home REAL,
+    expected_goals_away REAL,
     computed_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_matches_date ON matches(date);
 CREATE INDEX IF NOT EXISTS idx_odds_match ON odds_snapshots(match_id);
+
+-- I giocatori: 'bsd_id' è l'identificativo che usa la fonte dati (Bzzoiro
+-- Sports Data), serve per non duplicare lo stesso giocatore ad ogni scarico.
+CREATE TABLE IF NOT EXISTS players (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bsd_id INTEGER UNIQUE,
+    name TEXT NOT NULL,
+    team_id INTEGER REFERENCES teams(id)
+);
+
+-- Le statistiche di un giocatore in UNA partita già giocata — la "materia
+-- prima" da cui calcoliamo le sue medie (xG/90, gol/90, minuti tipici).
+CREATE TABLE IF NOT EXISTS player_match_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id INTEGER NOT NULL REFERENCES players(id),
+    match_bsd_id INTEGER NOT NULL,  -- id della partita nella fonte BSD
+    match_date TEXT NOT NULL,
+    started INTEGER,           -- 1 se titolare, 0 se subentrato
+    minutes INTEGER,
+    goals INTEGER,
+    shots INTEGER,
+    shots_on_target INTEGER,
+    xg REAL,
+    penalties_taken INTEGER,
+    penalties_scored INTEGER,
+    UNIQUE(player_id, match_bsd_id)
+);
+
+-- Le nostre previsioni sui marcatori per le partite in arrivo.
+CREATE TABLE IF NOT EXISTS player_predictions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id INTEGER NOT NULL REFERENCES players(id),
+    match_id INTEGER NOT NULL REFERENCES matches(id),
+    expected_minutes REAL,
+    starting_probability REAL,
+    team_xg_share REAL,
+    expected_goals REAL,
+    prob_score_anytime REAL,
+    computed_at TEXT NOT NULL,
+    UNIQUE(player_id, match_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_stats_player ON player_match_stats(player_id);
+CREATE INDEX IF NOT EXISTS idx_player_predictions_match ON player_predictions(match_id);
