@@ -237,7 +237,7 @@ def load_upcoming_with_predictions(conn):
         JOIN teams h ON m.home_team_id = h.id
         JOIN teams a ON m.away_team_id = a.id
         JOIN model_predictions p ON p.match_id = m.id
-        WHERE m.date >= date('now')
+        WHERE m.date >= date('now') AND m.home_goals IS NULL
         ORDER BY m.date
     """
     return pd.read_sql_query(query, conn)
@@ -254,7 +254,7 @@ def best_odds_for_match(conn, match_id):
     quell'esito si ripiega sugli altri (es. alcune partite di coppa)."""
     query = """
         WITH ultima_quota AS (
-            SELECT bookmaker, selection, odds,
+            SELECT bookmaker, selection, odds, snapshot_time,
                    ROW_NUMBER() OVER (
                        PARTITION BY bookmaker, selection
                        ORDER BY snapshot_time DESC
@@ -262,20 +262,50 @@ def best_odds_for_match(conn, match_id):
             FROM odds_snapshots
             WHERE match_id = ?
         )
-        SELECT selection, odds, bookmaker FROM ultima_quota WHERE rn = 1
+        SELECT selection, odds, bookmaker, snapshot_time FROM ultima_quota WHERE rn = 1
     """
+    rows = conn.execute(query, (match_id,)).fetchall()
+    # Quote "anomale": se almeno 3 bookmaker quotano un esito e uno è molto
+    # sopra gli altri (oltre il 30% sopra la mediana), è quasi sempre un
+    # errore della fonte o una quota vecchia non più disponibile, non un
+    # regalo del bookmaker. La scartiamo per non mostrare falsi +300% di EV.
+    by_sel = {}
+    for selection, odds, bookmaker, snap in rows:
+        by_sel.setdefault(selection, []).append(odds)
+    medians = {sel: sorted(v)[len(v) // 2] for sel, v in by_sel.items() if len(v) >= 3}
+    rows = [r for r in rows if r[0] not in medians or r[1] <= medians[r[0]] * 1.3]
+
     best, best_it = {}, {}
-    for selection, odds, bookmaker in conn.execute(query, (match_id,)).fetchall():
+    for selection, odds, bookmaker, snap in rows:
         if selection not in best or odds > best[selection][0]:
-            best[selection] = (odds, bookmaker)
+            best[selection] = (odds, bookmaker, snap)
         if bookmaker in BOOKMAKER_ITALIA and (selection not in best_it
                                              or odds > best_it[selection][0]):
-            best_it[selection] = (odds, bookmaker)
+            best_it[selection] = (odds, bookmaker, snap)
     chosen = {sel: best_it.get(sel, val) for sel, val in best.items()}
     if not chosen:
         return None
     return ({sel: v[0] for sel, v in chosen.items()},
-            {sel: v[1] for sel, v in chosen.items()})
+            {sel: v[1] for sel, v in chosen.items()},
+            {sel: v[2] for sel, v in chosen.items()})
+
+
+def odds_age_label(snapshot_time):
+    """'aggiornata 3 h fa': le quote si scaricano una volta al giorno (alle
+    6:00 UTC) per restare nel limite gratuito dell'API, quindi nel corso
+    della giornata il bookmaker può averle cambiate."""
+    try:
+        t = datetime.fromisoformat(str(snapshot_time))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        minutes = (datetime.now(timezone.utc) - t).total_seconds() / 60
+    except ValueError:
+        return "aggiornamento sconosciuto"
+    if minutes < 60:
+        return f"aggiornata {max(int(minutes), 1)} min fa"
+    if minutes < 48 * 60:
+        return f"aggiornata {int(minutes // 60)} h fa"
+    return f"aggiornata {int(minutes // 1440)} giorni fa"
 
 
 def list_bookmakers(conn):
@@ -305,7 +335,7 @@ def bookmaker_display_label(bookmaker):
     if bookmaker in BOOKMAKER_ITALIA:
         stesse_quote = BOOKMAKER_CLONI.get(bookmaker)
         if stesse_quote:
-            return f"🇮🇹 {bookmaker} (ADM) — stesse quote: {stesse_quote}"
+            return f"🇮🇹 {bookmaker} (ADM) — stessa piattaforma di: {stesse_quote}"
         return f"🇮🇹 {bookmaker} (ADM)"
     return bookmaker
 
@@ -329,10 +359,10 @@ def odds_by_bookmaker_for_match(conn, match_id, bookmaker):
 def risk_label(odds):
     """Etichetta semplice del livello di rischio in base alla quota."""
     if odds <= 1.8:
-        return "🟢 Rischio basso"
+        return "🟢 Quota bassa"
     elif odds <= 3.0:
-        return "🟡 Rischio medio"
-    return "🔴 Rischio alto"
+        return "🟡 Quota media"
+    return "🔴 Quota alta"
 
 
 # Bookmaker con licenza ADM (autorizzati in Italia) di cui abbiamo le quote.
@@ -342,8 +372,9 @@ def risk_label(odds):
 # Unibet la fonte non garantisce che sia l'entità italiana.
 BOOKMAKER_ITALIA = {"Goldbet", "Eurobet", "bet365", "Sisal", "Unibet", "Codere"}
 
-# Marchi diversi che usano le stesse identiche quote (stessa piattaforma),
-# secondo OddsPapi: giocare su uno o sull'altro è equivalente.
+# Marchi che OddsPapi indica come "clone" (stessa piattaforma): di solito le
+# quote coincidono, ma non l'abbiamo verificato su tutti i mercati — prima di
+# giocare conviene controllare la quota sul sito del marchio che usi.
 BOOKMAKER_CLONI = {
     "Goldbet": "Lottomatica, Planetwin365, BetFlag",
     "Sisal": "Snai, PokerStars",
@@ -364,7 +395,7 @@ def load_upcoming_player_predictions(conn):
         JOIN matches m ON m.id = pp.match_id
         JOIN teams ht ON ht.id = m.home_team_id
         JOIN teams at ON at.id = m.away_team_id
-        WHERE m.date >= date('now')
+        WHERE m.date >= date('now') AND m.home_goals IS NULL
         ORDER BY pp.prob_score_anytime DESC
     """
     return pd.read_sql_query(query, conn)
@@ -375,18 +406,18 @@ def load_scorer_odds(conn):
     riconosciuto, per le partite in arrivo."""
     query = """
         WITH ultima AS (
-            SELECT s.match_id, s.player_id, s.bookmaker, s.odds,
+            SELECT s.match_id, s.player_id, s.bookmaker, s.odds, s.snapshot_time,
                    ROW_NUMBER() OVER (PARTITION BY s.match_id, s.player_id, s.bookmaker
                                       ORDER BY s.snapshot_time DESC) AS rn
             FROM scorer_odds s JOIN matches m ON m.id = s.match_id
-            WHERE s.player_id IS NOT NULL AND m.date >= date('now')
+            WHERE s.player_id IS NOT NULL AND m.date >= date('now') AND m.home_goals IS NULL
         )
-        SELECT match_id, player_id, bookmaker, odds FROM ultima WHERE rn = 1
+        SELECT match_id, player_id, bookmaker, odds, snapshot_time FROM ultima WHERE rn = 1
     """
     try:
         return pd.read_sql_query(query, conn)
     except Exception:
-        return pd.DataFrame(columns=["match_id", "player_id", "bookmaker", "odds"])
+        return pd.DataFrame(columns=["match_id", "player_id", "bookmaker", "odds", "snapshot_time"])
 
 
 def best_scorer_odds(scorer_odds_df, bookmakers):
@@ -394,11 +425,12 @@ def best_scorer_odds(scorer_odds_df, bookmakers):
     bookmaker scelti, con il nome del bookmaker."""
     df = scorer_odds_df[scorer_odds_df["bookmaker"].isin(bookmakers)]
     if df.empty:
-        return df.assign(best_odds=[], best_bookmaker=[])[["match_id", "player_id",
-                                                           "best_odds", "best_bookmaker"]]
+        return df.assign(best_odds=[], best_bookmaker=[], best_time=[])[
+            ["match_id", "player_id", "best_odds", "best_bookmaker", "best_time"]]
     idx = df.groupby(["match_id", "player_id"])["odds"].idxmax()
-    return (df.loc[idx, ["match_id", "player_id", "odds", "bookmaker"]]
-              .rename(columns={"odds": "best_odds", "bookmaker": "best_bookmaker"}))
+    return (df.loc[idx, ["match_id", "player_id", "odds", "bookmaker", "snapshot_time"]]
+              .rename(columns={"odds": "best_odds", "bookmaker": "best_bookmaker",
+                               "snapshot_time": "best_time"}))
 
 
 def render_scorer_card(row):
@@ -412,7 +444,8 @@ def render_scorer_card(row):
         ev = expected_value(row["prob_score_anytime"], row["best_odds"])
         colore = "#5EB78A" if ev > 0 else "#E28F8F"
         quota_html = (f'<div class="spot-details" style="margin-top:6px; border-top:none; padding-top:0;">'
-                      f'<span>Quota <b>{row["best_odds"]}</b> · {row["best_bookmaker"]}</span>'
+                      f'<span>Quota <b>{row["best_odds"]}</b> · {row["best_bookmaker"]} · '
+                      f'{odds_age_label(row["best_time"])}</span>'
                       f'<span style="color:{colore}; font-weight:600;">EV {ev:+.1%}</span></div>')
     st.markdown(f"""
     <div class="spot-card">
@@ -472,7 +505,9 @@ def render_leg_row(leg):
 
 
 RISK_COLORS = {"leg-basso": "#5EB78A", "leg-medio": "#D4A017", "leg-alto": "#E28F8F"}
-RISK_TEXT = {"leg-basso": "rischio basso", "leg-medio": "rischio medio", "leg-alto": "rischio alto"}
+# Nota: è una FASCIA DI QUOTA (≤1.80 / ≤3.00 / oltre), non una misura di
+# rischio vera: il modello non stima ancora quanto è affidabile ogni previsione.
+RISK_TEXT = {"leg-basso": "quota bassa", "leg-medio": "quota media", "leg-alto": "quota alta"}
 
 
 def risk_badge_html(odds):
@@ -481,22 +516,32 @@ def risk_badge_html(odds):
     return f'<span style="color:{RISK_COLORS[cls]}; font-weight:600;">● {RISK_TEXT[cls]}</span>'
 
 
+EV_SOSPETTO = 0.25  # oltre +25% è molto più probabile un errore del modello che un regalo
+
+
 def render_spotlight_card(opp):
     """Disegna una scheda per un'opportunità di valore, con l'EV come numero
     grande e protagonista, e tutti i dettagli utili sotto."""
+    avviso = ""
+    ev = float(str(opp["Valore atteso (EV)"]).replace("%", "").replace("+", "")) / 100
+    if ev > EV_SOSPETTO:
+        avviso = ('<div style="font-size:0.78rem; color:#E28F8F; margin-top:4px;">⚠️ Scarto '
+                  'molto grande dal mercato: più probabile un limite del modello (o una '
+                  'quota non aggiornata) che un vero affare. Verifica prima di giocare.</div>')
     st.markdown(f"""
     <div class="spot-card">
         <div class="spot-league">{opp['Campionato'].upper()}</div>
         <div class="spot-teams">{opp['Partita']}</div>
         <div class="spot-ev-value">{opp['Valore atteso (EV)']}</div>
         <div class="spot-ev-label">valore atteso — {opp['Esito']} · prob. modello {opp['Nostra probabilità']:.0f}%</div>
+        {avviso}
         <div class="spot-details">
             <span>Quota <b>{opp['Quota migliore']}</b></span>
-            <span>{opp['Bookmaker']}</span>
+            <span>{opp['Bookmaker']} · {opp.get('Aggiornata', '')}</span>
         </div>
         <div class="spot-details" style="margin-top:6px; border-top:none; padding-top:0;">
             {risk_badge_html(opp['Quota migliore'])}
-            <span>Punta <b>{opp['Puntata consigliata']}</b></span>
+            <span>Kelly teorico <b>{opp['Puntata consigliata']}</b></span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -549,7 +594,8 @@ def scorer_legs_for_match(conn_or_df, match_id, predictions_df, bookmakers):
                      "model_probability": round(prob, 3), "odds": odds,
                      "ev": round(expected_value(prob, odds), 3),
                      "kelly_stake_pct": round(kelly_fraction(prob, odds) * 100, 2),
-                     "bookmaker": r["best_bookmaker"]})
+                     "bookmaker": r["best_bookmaker"],
+                     "aggiornata": odds_age_label(r["best_time"])})
     return legs
 
 
@@ -566,7 +612,7 @@ def compute_opportunities(conn, matches_df, min_ev, markets=None):
         odds_info = best_odds_for_match(conn, row["id"])
         if odds_info is None:
             continue
-        best_odds, best_bookmaker = odds_info
+        best_odds, best_bookmaker, best_time = odds_info
 
         model_probs = model_probabilities(row)
         if markets:
@@ -582,8 +628,9 @@ def compute_opportunities(conn, matches_df, min_ev, markets=None):
                 "Nostra probabilità": round(vb["model_probability"] * 100, 1),
                 "Quota migliore": vb["odds"],
                 "Bookmaker": best_bookmaker[vb["selection"]],
+                "Aggiornata": odds_age_label(best_time[vb["selection"]]),
                 "Valore atteso (EV)": f"{vb['ev']:+.1%}",
-                "Puntata consigliata": f"{vb['kelly_stake_pct']:.1f}% del capitale",
+                "Puntata consigliata": f"{vb['kelly_stake_pct']:.1f}%",
                 "Rischio": risk_label(vb["odds"]),
                 "_ev_sort": vb["ev"],
             })
@@ -597,8 +644,9 @@ def compute_opportunities(conn, matches_df, min_ev, markets=None):
                     "Esito": leg["label"],
                     "Nostra probabilità": round(leg["model_probability"] * 100, 1),
                     "Quota migliore": leg["odds"], "Bookmaker": leg["bookmaker"],
+                    "Aggiornata": leg.get("aggiornata", ""),
                     "Valore atteso (EV)": f"{leg['ev']:+.1%}",
-                    "Puntata consigliata": f"{leg['kelly_stake_pct']:.1f}% del capitale",
+                    "Puntata consigliata": f"{leg['kelly_stake_pct']:.1f}%",
                     "Rischio": risk_label(leg["odds"]), "_ev_sort": leg["ev"],
                 })
     return all_opportunities
@@ -656,8 +704,12 @@ with tab_opportunita:
         st.caption(
             "Il 'valore atteso' è quanto ti aspetti di guadagnare in media, su tante "
             "ripetizioni, puntando su questa scommessa — non è una garanzia sulla "
-            "singola partita. La puntata consigliata è calcolata in modo prudente "
-            "(Kelly frazionato): più alta è, più il modello è convinto del valore."
+            "singola partita. Il 'Kelly teorico' è la frazione del capitale che il "
+            "criterio di Kelly (frazionato, prudente) suggerirebbe SE le probabilità "
+            "del modello fossero esatte: finché il modello non è stato verificato sui "
+            "risultati passati, prendila come indicazione, non come consiglio. "
+            "Le quote si aggiornano una volta al giorno: prima di giocare controlla "
+            "che siano ancora quelle sul sito del bookmaker."
         )
 
 # ---------------------------------------------------------------------------
@@ -758,15 +810,16 @@ with tab_schedina:
                 num_matches = st.slider("Numero di partite:", min_value=1, max_value=5, value=3)
 
             max_risk = st.select_slider(
-                "Rischio massimo per singola selezione:",
-                options=["🟢 Solo basso", "🟡 Basso o medio", "🔴 Qualsiasi"],
+                "Quota massima per singola selezione:",
+                options=["🟢 Solo basse (≤1.80)", "🟡 Fino a medie (≤3.00)", "🔴 Qualsiasi"],
                 value="🔴 Qualsiasi",
             )
-            risk_order = {"🟢 Rischio basso": 0, "🟡 Rischio medio": 1, "🔴 Rischio alto": 2}
-            max_risk_level = {"🟢 Solo basso": 0, "🟡 Basso o medio": 1, "🔴 Qualsiasi": 2}[max_risk]
+            risk_order = {"🟢 Quota bassa": 0, "🟡 Quota media": 1, "🔴 Quota alta": 2}
+            max_risk_level = {"🟢 Solo basse (≤1.80)": 0, "🟡 Fino a medie (≤3.00)": 1,
+                              "🔴 Qualsiasi": 2}[max_risk]
             st.caption(
-                "Limitare al rischio basso riduce le partite disponibili tra cui scegliere: "
-                "con poche selezioni 'sicure', potrebbe non essere possibile raggiungere il "
+                "Limitare alle quote basse riduce le partite disponibili tra cui scegliere: "
+                "con poche selezioni a quota bassa, potrebbe non essere possibile raggiungere il "
                 "ritorno desiderato — in quel caso te lo segnalo."
             )
 
@@ -825,8 +878,9 @@ with tab_schedina:
 
             c1, c2, c3 = st.columns(3)
             c1.metric("Quota combinata", f"{combined_odds:.2f}")
-            c2.metric("Ritorno stimato", f"€{projected_return:.2f}")
-            c3.metric("Guadagno stimato", f"€{projected_profit:.2f}")
+            c2.metric("Ritorno potenziale", f"€{projected_return:.2f}",
+                      help="Quanto incassi SE la schedina è vincente (puntata × quota).")
+            c3.metric("Vincita netta potenziale", f"€{projected_profit:.2f}")
 
             st.caption(
                 f"Probabilità combinata secondo il nostro modello: {combined_prob:.1%}. "
