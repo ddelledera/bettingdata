@@ -84,6 +84,10 @@ def main():
     with open("oddspapi_bookmakers.json", "w", encoding="utf-8") as f:
         json.dump(books, f, ensure_ascii=False, indent=1)
     print(f"Bookmaker totali nel sistema: {len(books)}")
+    # alcuni bookmaker hanno nome o slug vuoti (None): li normalizziamo
+    books = [dict(b, slug=b.get("slug") or "",
+                  bookmakerName=b.get("bookmakerName") or "")
+             for b in books if b.get("slug")]
 
     def matching(keywords):
         return [b for b in books
