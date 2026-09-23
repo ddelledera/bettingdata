@@ -91,6 +91,7 @@ FIXTURE_ALIASES = {
     "Rayo Vallecano de Madrid": "Vallecano", "RC Celta de Vigo": "Celta",
     "AJ Auxerre": "Auxerre", "ES Troyes AC": "Troyes",
     "RC Strasbourg Alsace": "Strasbourg", "Stade Brestois 29": "Brest",
+    "Real Sociedad de Fútbol": "Sociedad", "Real Sociedad": "Sociedad",
 }
 
 
