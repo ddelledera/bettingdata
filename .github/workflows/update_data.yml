@@ -42,9 +42,9 @@ jobs:
           FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
         run: python ingest_european_cups.py
 
-      - name: Scarica quote live
+      - name: Scarica quote bookmaker italiani (OddsPapi)
         env:
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDSPAPI_KEY: ${{ secrets.ODDSPAPI_KEY }}
         run: python fetch_odds.py
 
       - name: Scarica partite e quote Champions/Europa/Conference
