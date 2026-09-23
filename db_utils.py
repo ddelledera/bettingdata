@@ -21,6 +21,10 @@ MIGRATIONS = [
     ("model_predictions", "expected_goals_away", "REAL"),
     ("players", "availability", "TEXT"),
     ("players", "injury_type", "TEXT"),
+    ("model_predictions", "prob_btts", "REAL"),
+    ("model_predictions", "prob_over15", "REAL"),
+    ("model_predictions", "prob_over25", "REAL"),
+    ("model_predictions", "prob_over35", "REAL"),
 ]
 
 
