@@ -1,25 +1,29 @@
 """
-Quali mercati offrono davvero i bookmaker italiani su OddsPapi?
-Cerchiamo: doppia chance (1X, X2, 12), Goal/No Goal, Under/Over e MARCATORI.
-Consumo: 4 richieste. NON tocca data.db.
+Perché non vediamo i marcatori? Ipotesi principale: i bookmaker italiani
+aprono il mercato marcatori solo pochi giorni prima della partita (quando
+si conoscono le formazioni probabili), mentre il nostro test guardava la
+Serie A del 10-12 ottobre, a più di due settimane di distanza.
+
+Verifica: stesse domande, ma su partite dei PROSSIMI GIORNI (Nations League
+durante la sosta, e il campionato brasiliano), dove i marcatori dovrebbero
+già essere aperti. Consumo: circa 6 richieste. NON tocca data.db.
 """
 
-import json
 import os
 import time
-from collections import defaultdict
+from collections import Counter
 
 import requests
 
 BASE = "https://api.oddspapi.io/v4"
 KEY = os.environ.get("ODDSPAPI_KEY")
-SERIE_A = 23
-BOOKS = ["eurobet.it", "goldbet.it", "bet365.it"]
+BOOKS = ["eurobet.it", "bet365.it", "goldbet.it"]
+CERCA = ["nations league", "brasileiro serie a"]
 
 
 def get(path, **params):
     params["apiKey"] = KEY
-    r = requests.get(f"{BASE}{path}", params=params, timeout=60)
+    r = requests.get(f"{BASE}{path}", params=params, timeout=90)
     time.sleep(1.1)
     if r.status_code != 200:
         print(f"ERRORE {r.status_code} su {path}: {r.text[:300]}")
@@ -27,50 +31,46 @@ def get(path, **params):
     return r.json()
 
 
-# 1. Anagrafica mercati del calcio: id -> nome
+# 1. Anagrafica: quali mercati sono "per giocatore"
 markets = get("/markets", sportId=10) or []
-if isinstance(markets, dict):
-    markets = markets.get("data") or list(markets.values())
-print(f"Mercati nell'anagrafica: {len(markets)}")
-if markets:
-    print("Esempio grezzo:", json.dumps(markets[0], ensure_ascii=False)[:600])
-names, outcome_names = {}, {}
-for m in markets:
-    mid = str(m.get("marketId") or m.get("id"))
-    names[mid] = m.get("marketName") or m.get("name") or "?"
-    for o in m.get("outcomes", []) or []:
-        oid = str(o.get("outcomeId") or o.get("id"))
-        outcome_names[oid] = o.get("outcomeName") or o.get("name") or oid
+prop_names = {str(m["marketId"]): m["marketName"] for m in markets if m.get("playerProp")}
+tipi = Counter(prop_names.values())
+print(f"Mercati per giocatore nell'anagrafica calcio: {len(prop_names)} "
+      f"(tipi: {', '.join(n for n, _ in tipi.most_common(8))})")
 
-# 2. Mercati presenti per ciascun bookmaker (prima partita di Serie A con quote)
-for book in BOOKS:
-    data = get("/odds-by-tournaments", tournamentIds=SERIE_A, bookmaker=book,
-               oddsFormat="decimal")
+# 2. Tornei con partite nei prossimi giorni
+tournaments = get("/tournaments", sportId=10) or []
+scelti = [t for t in tournaments
+          if any(c in (t.get("tournamentName") or "").lower() for c in CERCA)
+          and (t.get("upcomingFixtures") or 0) > 0]
+scelti.sort(key=lambda t: -(t.get("upcomingFixtures") or 0))
+scelti = scelti[:2]
+for t in scelti:
+    print(f"Torneo: {t['tournamentName']} ({t.get('categoryName')}) id={t['tournamentId']}, "
+          f"partite imminenti: {t.get('upcomingFixtures')}")
+if not scelti:
+    print("Nessun torneo imminente trovato tra", CERCA)
+
+# 3. Per ogni bookmaker: ci sono mercati per giocatore?
+ids = ",".join(str(t["tournamentId"]) for t in scelti)
+for book in BOOKS if ids else []:
+    data = get("/odds-by-tournaments", tournamentIds=ids, bookmaker=book, oddsFormat="decimal")
     fixtures = data if isinstance(data, list) else []
-    fx = next((f for f in fixtures if (f.get("bookmakerOdds") or {}).get(book)), None)
-    print(f"\n################ {book} — {len(fixtures)} partite ################")
-    if not fx:
-        print("  nessuna quota")
-        continue
-    mk = fx["bookmakerOdds"][book].get("markets") or {}
-    print(f"  Partita {fx.get('fixtureId')}: {len(mk)} mercati\n")
-    # raggruppa per nome di mercato, per non stampare 95 righe uguali
-    groups = defaultdict(list)
-    for mid, mdata in mk.items():
-        outs = mdata.get("outcomes") or {}
-        players = {pid for o in outs.values() for pid in (o.get("players") or {})}
-        sample = []
-        for oid, o in list(outs.items())[:3]:
-            for pid, p in list((o.get("players") or {}).items())[:1]:
-                sample.append(f"{outcome_names.get(oid, p.get('bookmakerOutcomeId', oid))}"
-                              f"={p.get('price')}"
-                              + (f" [{p.get('playerName')}]" if p.get("playerName") else ""))
-        groups[names.get(mid, "?")].append(
-            f"id {mid}: {len(outs)} esiti, giocatori {len(players - {'0'})}  " + ", ".join(sample))
-    for name in sorted(groups):
-        rows = groups[name]
-        print(f"  {name}  ({len(rows)} varianti)")
-        for r in rows[:2]:
-            print(f"      {r}")
+    print(f"\n######## {book}: {len(fixtures)} partite ########")
+    for fx in sorted(fixtures, key=lambda f: f.get("startTime") or "")[:6]:
+        mk = ((fx.get("bookmakerOdds") or {}).get(book) or {}).get("markets") or {}
+        props = {mid: m for mid, m in mk.items()
+                 if mid in prop_names or any(
+                     pid != "0" for o in (m.get("outcomes") or {}).values()
+                     for pid in (o.get("players") or {}))}
+        esempio = ""
+        for mid, m in list(props.items())[:1]:
+            for o in (m.get("outcomes") or {}).values():
+                for pid, p in list((o.get("players") or {}).items())[:3]:
+                    esempio += f" {p.get('playerName')}={p.get('price')};"
+                break
+        print(f"  {(fx.get('startTime') or '')[:16]}  mercati {len(mk):3d}  di cui per giocatore "
+              f"{len(props):3d}  {', '.join(sorted({prop_names.get(x, x) for x in props}))[:90]}"
+              + (f"\n      es.:{esempio}" if esempio else ""))
 
-print("\nFatto. Richieste usate: 4.")
+print("\nFatto.")
