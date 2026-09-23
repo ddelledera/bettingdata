@@ -11,7 +11,8 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 from value_calculator import remove_bookmaker_margin, find_value_bets, combine_parlay, find_best_combination
-from markets import model_probabilities, long_label, market_of, MARKET_NAMES
+from markets import model_probabilities, long_label, market_of, MARKET_NAMES, scorer_key
+from value_calculator import expected_value, kelly_fraction
 from github_storage import read_json_file, write_json_file
 import math
 import uuid
@@ -352,7 +353,8 @@ BOOKMAKER_CLONI = {
 def load_upcoming_player_predictions(conn):
     """Previsioni marcatori per le partite in arrivo, con nome squadra e avversario."""
     query = """
-        SELECT pl.name AS player, t.name AS team, m.id AS match_id, m.date, m.league,
+        SELECT pl.id AS player_id, pl.name AS player, t.name AS team, m.id AS match_id,
+               m.date, m.league,
                ht.name AS home_team, at.name AS away_team,
                pp.expected_goals, pp.prob_score_anytime,
                pp.expected_minutes, pp.starting_probability
@@ -368,12 +370,50 @@ def load_upcoming_player_predictions(conn):
     return pd.read_sql_query(query, conn)
 
 
+def load_scorer_odds(conn):
+    """Ultima quota 'marcatore' di ogni bookmaker per ogni giocatore
+    riconosciuto, per le partite in arrivo."""
+    query = """
+        WITH ultima AS (
+            SELECT s.match_id, s.player_id, s.bookmaker, s.odds,
+                   ROW_NUMBER() OVER (PARTITION BY s.match_id, s.player_id, s.bookmaker
+                                      ORDER BY s.snapshot_time DESC) AS rn
+            FROM scorer_odds s JOIN matches m ON m.id = s.match_id
+            WHERE s.player_id IS NOT NULL AND m.date >= date('now')
+        )
+        SELECT match_id, player_id, bookmaker, odds FROM ultima WHERE rn = 1
+    """
+    try:
+        return pd.read_sql_query(query, conn)
+    except Exception:
+        return pd.DataFrame(columns=["match_id", "player_id", "bookmaker", "odds"])
+
+
+def best_scorer_odds(scorer_odds_df, bookmakers):
+    """Per ogni (partita, giocatore) la quota marcatore migliore tra i
+    bookmaker scelti, con il nome del bookmaker."""
+    df = scorer_odds_df[scorer_odds_df["bookmaker"].isin(bookmakers)]
+    if df.empty:
+        return df.assign(best_odds=[], best_bookmaker=[])[["match_id", "player_id",
+                                                           "best_odds", "best_bookmaker"]]
+    idx = df.groupby(["match_id", "player_id"])["odds"].idxmax()
+    return (df.loc[idx, ["match_id", "player_id", "odds", "bookmaker"]]
+              .rename(columns={"odds": "best_odds", "bookmaker": "best_bookmaker"}))
+
+
 def render_scorer_card(row):
     """Disegna una scheda per la probabilità di un giocatore di segnare,
     nello stesso stile delle schede 'in evidenza' delle opportunità."""
     avversario = row["away_team"] if row["team"] == row["home_team"] else row["home_team"]
     minuti = f"{row['expected_minutes']:.0f}'" if pd.notna(row.get("expected_minutes")) else "—"
     titolare = f"{row['starting_probability']:.0%}" if pd.notna(row.get("starting_probability")) else "—"
+    quota_html = ""
+    if pd.notna(row.get("best_odds")):
+        ev = expected_value(row["prob_score_anytime"], row["best_odds"])
+        colore = "#5EB78A" if ev > 0 else "#E28F8F"
+        quota_html = (f'<div class="spot-details" style="margin-top:6px; border-top:none; padding-top:0;">'
+                      f'<span>Quota <b>{row["best_odds"]}</b> · {row["best_bookmaker"]}</span>'
+                      f'<span style="color:{colore}; font-weight:600;">EV {ev:+.1%}</span></div>')
     st.markdown(f"""
     <div class="spot-card">
         <div class="spot-league">{row['league'].upper()}</div>
@@ -385,6 +425,7 @@ def render_scorer_card(row):
             <span>Minuti attesi <b>{minuti}</b></span>
             <span>Titolare <b>{titolare}</b></span>
         </div>
+        {quota_html}
     </div>
     """, unsafe_allow_html=True)
 
@@ -413,7 +454,7 @@ def render_leg_row(leg):
     esito scelto, quota e probabilità del modello ben distinti visivamente.
     Il livello di rischio è indicato sia dal colore del bordo sia da
     un'etichetta di testo, per chi non riesce a distinguere bene i colori."""
-    esito_label = long_label(leg["selection"])
+    esito_label = leg.get("label") or long_label(leg["selection"])
     st.markdown(f"""
     <div class="leg-row {risk_css_class(leg['odds'])}">
         <div class="leg-match">
@@ -492,10 +533,35 @@ def render_slip_card(slip):
                          f"risultato vero: {leg['actual_result']}")
 
 
+def scorer_legs_for_match(conn_or_df, match_id, predictions_df, bookmakers):
+    """Selezioni 'marcatore' di una partita (quota migliore tra i bookmaker
+    indicati), nello stesso formato delle altre selezioni."""
+    odds_df = best_scorer_odds(conn_or_df[conn_or_df["match_id"] == match_id], bookmakers)
+    if odds_df.empty:
+        return []
+    merged = odds_df.merge(predictions_df[predictions_df["match_id"] == match_id],
+                           on=["match_id", "player_id"])
+    legs = []
+    for _, r in merged.iterrows():
+        prob, odds = r["prob_score_anytime"], r["best_odds"]
+        key = scorer_key(int(r["player_id"]))
+        legs.append({"selection": key, "label": long_label(key, r["player"]),
+                     "model_probability": round(prob, 3), "odds": odds,
+                     "ev": round(expected_value(prob, odds), 3),
+                     "kelly_stake_pct": round(kelly_fraction(prob, odds) * 100, 2),
+                     "bookmaker": r["best_bookmaker"]})
+    return legs
+
+
 def compute_opportunities(conn, matches_df, min_ev, markets=None):
     """Calcola tutte le opportunità di valore (quota migliore tra tutti i
     bookmaker), su tutti i mercati scelti, usata dalla scheda principale."""
     all_opportunities = []
+    with_scorers = markets is None or "Marcatori" in markets
+    if with_scorers:
+        scorer_odds_df = load_scorer_odds(conn)
+        scorer_preds = load_upcoming_player_predictions(conn) if not scorer_odds_df.empty else None
+        italiani = [b for b in scorer_odds_df["bookmaker"].unique() if b in BOOKMAKER_ITALIA]
     for _, row in matches_df.iterrows():
         odds_info = best_odds_for_match(conn, row["id"])
         if odds_info is None:
@@ -521,6 +587,20 @@ def compute_opportunities(conn, matches_df, min_ev, markets=None):
                 "Rischio": risk_label(vb["odds"]),
                 "_ev_sort": vb["ev"],
             })
+        if with_scorers and scorer_preds is not None:
+            for leg in scorer_legs_for_match(scorer_odds_df, row["id"], scorer_preds, italiani):
+                if leg["ev"] < min_ev:
+                    continue
+                all_opportunities.append({
+                    "Partita": f"{row['home']} vs {row['away']}",
+                    "Campionato": row["league"], "Data": row["date"],
+                    "Esito": leg["label"],
+                    "Nostra probabilità": round(leg["model_probability"] * 100, 1),
+                    "Quota migliore": leg["odds"], "Bookmaker": leg["bookmaker"],
+                    "Valore atteso (EV)": f"{leg['ev']:+.1%}",
+                    "Puntata consigliata": f"{leg['kelly_stake_pct']:.1f}% del capitale",
+                    "Rischio": risk_label(leg["odds"]), "_ev_sort": leg["ev"],
+                })
     return all_opportunities
 
 
@@ -611,6 +691,19 @@ with tab_schedina:
             return {k: v for k, v in model_probabilities(row).items()
                     if market_of(k) in markets_sched}
 
+        sched_scorer_odds = load_scorer_odds(conn) if "Marcatori" in markets_sched else None
+        sched_scorer_preds = (load_upcoming_player_predictions(conn)
+                              if sched_scorer_odds is not None and not sched_scorer_odds.empty
+                              else None)
+
+        def sched_scorer_legs(row):
+            """Marcatori con valore di questa partita, sul bookmaker scelto."""
+            if sched_scorer_preds is None:
+                return []
+            return [l for l in scorer_legs_for_match(sched_scorer_odds, row["id"],
+                                                     sched_scorer_preds, [selected_bookmaker])
+                    if l["ev"] >= 0]
+
         mode = st.radio(
             "Come vuoi costruire la schedina?",
             ["🖐️ Scelgo io le partite", "🔍 Trova la combinazione migliore per me"],
@@ -625,11 +718,9 @@ with tab_schedina:
             # --- Modalità manuale: scegli tu quali partite mettere in schedina ---
             candidate_legs = {}
             for _, row in filtered_sched.iterrows():
-                bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker)
-                if bm_odds is None:
-                    continue
-                for vb in find_value_bets(sched_probs(row), bm_odds, min_ev=0.0):
-                    esito_label = long_label(vb["selection"])
+                bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker) or {}
+                for vb in find_value_bets(sched_probs(row), bm_odds, min_ev=0.0) + sched_scorer_legs(row):
+                    esito_label = vb.get("label") or long_label(vb["selection"])
                     label = (f"{row['home']} vs {row['away']} — {esito_label} @ {vb['odds']} "
                              f"(nostra prob. {vb['model_probability']:.0%}, EV {vb['ev']:+.1%})")
                     vb["match_id"] = row["id"]
@@ -682,12 +773,11 @@ with tab_schedina:
             if st.button("🔍 Trova la combinazione migliore", type="primary"):
                 legs_by_match = {}
                 for _, row in filtered_sched.iterrows():
-                    bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker)
-                    if bm_odds is None:
-                        continue
+                    bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker) or {}
                     # solo selezioni con valore (EV >= 0): la schedina deve essere
                     # conveniente, non solo "probabile"
-                    candidates = find_value_bets(sched_probs(row), bm_odds, min_ev=0.0)
+                    candidates = (find_value_bets(sched_probs(row), bm_odds, min_ev=0.0)
+                                  + sched_scorer_legs(row))
                     candidates = [c for c in candidates
                                   if risk_order[risk_label(c["odds"])] <= max_risk_level]
                     if candidates:
@@ -765,6 +855,7 @@ with tab_schedina:
                         "legs": [
                             {"match_id": leg["match_id"], "match_label": leg["match_label"],
                              "match_date": leg["match_date"], "selection": leg["selection"],
+                             "label": leg.get("label") or long_label(leg["selection"]),
                              "odds": leg["odds"], "model_probability": leg["model_probability"]}
                             for leg in combo
                         ],
@@ -870,22 +961,44 @@ with tab_marcatori:
         if squadre:
             df = df[df["team"].isin(squadre)]
 
+        # Quote marcatore dei bookmaker (compaiono 1-3 giorni prima della partita)
+        scorer_odds_df = load_scorer_odds(conn)
+        libri = sorted(scorer_odds_df["bookmaker"].unique())
+        if libri:
+            scelti = st.multiselect("Bookmaker (quota migliore tra quelli scelti):", libri,
+                                    default=libri, format_func=bookmaker_display_label,
+                                    key="marc_bookmaker")
+            df = df.merge(best_scorer_odds(scorer_odds_df, scelti),
+                          on=["match_id", "player_id"], how="left")
+            df["ev"] = df["prob_score_anytime"] * df["best_odds"] - 1
+        else:
+            st.caption("Le quote marcatore non sono ancora disponibili: i bookmaker aprono "
+                       "questo mercato solo 1-3 giorni prima della partita. Nel frattempo "
+                       "vedi le probabilità del nostro modello.")
+            df["best_odds"], df["best_bookmaker"], df["ev"] = None, None, None
+
         f3, f4, f5 = st.columns([2, 1, 1])
         with f3:
             min_prob = st.slider("Probabilità di segnare almeno:",
                                  min_value=0, max_value=80, value=20, format="%d%%",
                                  key="marc_prob") / 100
         with f4:
-            ordine = st.radio("Ordina per:", ["Probabilità", "Gol attesi"], key="marc_ordine")
+            ordini = ["Probabilità", "Gol attesi"] + (["Valore atteso"] if libri else [])
+            ordine = st.radio("Ordina per:", ordini, key="marc_ordine")
         with f5:
             solo_titolari = st.checkbox("Solo probabili titolari", key="marc_titolari",
                                         help="Titolare in almeno 3 delle ultime 5 partite della squadra.")
+            solo_valore = st.checkbox("Solo con valore (EV > 0)", key="marc_valore",
+                                      disabled=not libri)
 
         df = df[df["prob_score_anytime"] >= min_prob]
         if solo_titolari:
             df = df[df["starting_probability"].fillna(0) >= 0.6]
-        df = df.sort_values("prob_score_anytime" if ordine == "Probabilità" else "expected_goals",
-                            ascending=False)
+        if solo_valore:
+            df = df[df["ev"].fillna(-1) > 0]
+        colonna = {"Probabilità": "prob_score_anytime", "Gol attesi": "expected_goals",
+                   "Valore atteso": "ev"}[ordine]
+        df = df.sort_values(colonna, ascending=False, na_position="last")
 
         MAX_SCHEDE = 60
         if df.empty:
