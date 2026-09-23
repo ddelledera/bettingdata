@@ -88,3 +88,18 @@ CREATE TABLE IF NOT EXISTS player_predictions (
 
 CREATE INDEX IF NOT EXISTS idx_player_stats_player ON player_match_stats(player_id);
 CREATE INDEX IF NOT EXISTS idx_player_predictions_match ON player_predictions(match_id);
+
+-- Quote "di riferimento" di bookmaker NON giocabili dall'Italia (oggi solo
+-- Pinnacle, il bookmaker più efficiente del mercato). Tenute separate da
+-- odds_snapshots perché l'app non deve mai proporle come quote da giocare:
+-- servono per il backtest (confronto con la quota di chiusura).
+CREATE TABLE IF NOT EXISTS reference_odds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id INTEGER NOT NULL REFERENCES matches(id),
+    bookmaker TEXT NOT NULL,
+    market TEXT NOT NULL,
+    selection TEXT NOT NULL,
+    odds REAL NOT NULL,
+    snapshot_time TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reference_odds_match ON reference_odds(match_id);
