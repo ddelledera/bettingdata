@@ -13,6 +13,7 @@ esattamente dove incollarla (una casella di testo, non codice).
 
 import os
 import sqlite3
+from db_utils import init_db
 import requests
 from datetime import date, timedelta
 from team_utils import get_or_create_team
@@ -84,8 +85,7 @@ def load_into_db(matches, league_name, conn):
 
 def main():
     conn = sqlite3.connect(DB_PATH)
-    with open("schema.sql") as f:
-        conn.executescript(f.read())
+    init_db(conn)
 
     for code, league_name in COMPETITION_CODES.items():
         print(f"Controllo partite in arrivo: {league_name}...")
