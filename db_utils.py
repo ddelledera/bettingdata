@@ -25,6 +25,8 @@ MIGRATIONS = [
     ("model_predictions", "prob_over15", "REAL"),
     ("model_predictions", "prob_over25", "REAL"),
     ("model_predictions", "prob_over35", "REAL"),
+    ("bsd_events", "home_score", "INTEGER"),
+    ("bsd_events", "away_score", "INTEGER"),
 ]
 
 
