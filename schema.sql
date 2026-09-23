@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS model_predictions (
     prob_away REAL NOT NULL,
     expected_goals_home REAL,
     expected_goals_away REAL,
+    prob_btts REAL,                  -- segnano entrambe (Goal)
+    prob_over15 REAL,
+    prob_over25 REAL,
+    prob_over35 REAL,
     computed_at TEXT NOT NULL
 );
 
