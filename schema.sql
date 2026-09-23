@@ -122,7 +122,9 @@ CREATE TABLE IF NOT EXISTS bsd_events (
     home_team_name TEXT,
     away_team_name TEXT,
     match_id INTEGER REFERENCES matches(id),
-    stats_done INTEGER NOT NULL DEFAULT 0
+    stats_done INTEGER NOT NULL DEFAULT 0,
+    home_score INTEGER,
+    away_score INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_bsd_events_date ON bsd_events(event_date);
 
