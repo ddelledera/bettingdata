@@ -11,6 +11,8 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
+from markets import is_winner, long_label
+
 DB_PATH = "data.db"
 SLIPS_PATH = "tracked_slips.json"
 
@@ -29,18 +31,13 @@ def save_slips(slips):
 
 
 def get_match_result(conn, match_id):
-    """Ritorna 'Home', 'Draw', 'Away' se la partita è finita, altrimenti None."""
+    """Ritorna (gol casa, gol trasferta) se la partita è finita, altrimenti None."""
     row = conn.execute(
         "SELECT home_goals, away_goals FROM matches WHERE id = ?", (match_id,)
     ).fetchone()
     if row is None or row[0] is None:
         return None
-    hg, ag = row
-    if hg > ag:
-        return "Home"
-    elif hg < ag:
-        return "Away"
-    return "Draw"
+    return row
 
 
 def main():
@@ -61,15 +58,17 @@ def main():
         results = []
         all_played = True
         for leg in slip["legs"]:
-            actual = get_match_result(conn, leg["match_id"])
-            if actual is None:
+            score = get_match_result(conn, leg["match_id"])
+            if score is None:
                 all_played = False
                 break
+            hg, ag = score
             results.append({
                 "match_label": leg["match_label"],
-                "selection": leg["selection"],
-                "actual_result": actual,
-                "won": actual == leg["selection"],
+                "selection": long_label(leg["selection"]),
+                "actual_result": f"{hg}-{ag}",
+                # vale per tutti i mercati: 1X2, doppia chance, Goal/No Goal, Under/Over
+                "won": is_winner(leg["selection"], hg, ag),
             })
 
         if not all_played:
