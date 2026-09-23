@@ -203,3 +203,28 @@ class DixonColesModel:
 
         total = prob_home + prob_draw + prob_away
         return prob_home / total, prob_draw / total, prob_away / total
+
+
+    def market_probabilities(self, home_team, away_team, max_goals=10):
+        """Probabilità per i mercati sui gol (Goal/No Goal, Under/Over),
+        dalla stessa matrice dei risultati esatti usata per l'1X2."""
+        a = self.params["attack"]
+        d = self.params["defense"]
+        rho = self.params["rho"]
+        lam_home = np.exp(a[home_team] - d[away_team] + self.params["home_adv"])
+        lam_away = np.exp(a[away_team] - d[home_team])
+
+        goals = np.arange(max_goals + 1)
+        hg, ag = np.meshgrid(goals, goals, indexing="ij")
+        hg, ag = hg.ravel().astype(float), ag.ravel().astype(float)
+        lh, la = np.full_like(hg, lam_home), np.full_like(ag, lam_away)
+        probs = _tau_correction(hg, ag, lh, la, rho) * np.exp(
+            _poisson_logpmf(hg, lh) + _poisson_logpmf(ag, la))
+        probs = probs / probs.sum()
+        total = hg + ag
+        return {
+            "prob_btts": float(probs[(hg > 0) & (ag > 0)].sum()),
+            "prob_over15": float(probs[total >= 2].sum()),
+            "prob_over25": float(probs[total >= 3].sum()),
+            "prob_over35": float(probs[total >= 4].sum()),
+        }
