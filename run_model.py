@@ -9,6 +9,7 @@ fetch_fixtures.py, fetch_odds.py).
 """
 
 import sqlite3
+from db_utils import init_db
 from datetime import datetime, date, timezone
 from model import DixonColesModel
 
@@ -80,8 +81,7 @@ EUROPEAN_COMPETITIONS = {"Champions League", "Europa League", "Conference League
 
 def main():
     conn = sqlite3.connect(DB_PATH)
-    with open("schema.sql") as f:
-        conn.executescript(f.read())
+    init_db(conn)
 
     leagues = list_leagues(conn)
     domestic_leagues = [l for l in leagues if l not in EUROPEAN_COMPETITIONS]
