@@ -16,8 +16,3 @@ jobs:
         env:
           ODDSPAPI_KEY: ${{ secrets.ODDSPAPI_KEY }}
         run: python test_oddspapi.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: risposte-oddspapi
-          path: "*.json"
