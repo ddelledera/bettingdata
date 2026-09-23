@@ -27,32 +27,72 @@ def load_upcoming_matches_with_goals(conn):
     """).fetchall()
 
 
-def load_team_players_stats(conn, team_id):
-    """Statistiche stagionali dei giocatori di una squadra, già pronte per
-    il modello di distribuzione (xG/90, gol/90, minuti attesi)."""
-    rows = conn.execute("""
-        SELECT pl.id, pl.name, s.xg, s.goals, s.minutes
-        FROM players pl
-        JOIN player_match_stats s ON s.player_id = pl.id AND s.match_bsd_id = -1
-        WHERE pl.team_id = ?
-    """, (team_id,)).fetchall()
+RECENT_TEAM_MATCHES = 5    # partite recenti della squadra per stimare i minuti
+STATS_WINDOW_DAYS = 365    # statistiche individuali: ultimi 12 mesi
+PRIOR_MINUTES = 450        # "restringimento" verso la media per chi ha giocato poco
+PRIOR_PER_90 = 0.10        # xG e gol per 90' di un giocatore qualunque
 
+
+def load_team_players_stats(conn, team_id):
+    """Per ogni giocatore ATTUALMENTE in rosa (e non infortunato):
+    - xG/90 e gol/90 negli ultimi 12 mesi, "ristretti" verso una media
+      generica quando i minuti sono pochi (5 minuti con un gol non fanno
+      di nessuno un bomber da 18 gol a partita);
+    - minuti attesi e probabilità di partire titolare, dalle ultime
+      RECENT_TEAM_MATCHES partite della squadra (0 minuti se non ha giocato).
+    """
+    recent = [r[0] for r in conn.execute(f"""
+        SELECT e.id FROM bsd_events e
+        WHERE e.stats_done = 1 AND (
+              e.home_bsd_team_id IN (SELECT bsd_id FROM bsd_teams WHERE team_id = ?)
+           OR e.away_bsd_team_id IN (SELECT bsd_id FROM bsd_teams WHERE team_id = ?))
+        ORDER BY e.event_date DESC LIMIT {RECENT_TEAM_MATCHES}
+    """, (team_id, team_id))]
+    if not recent:
+        return []
+    marks = ",".join("?" * len(recent))
+
+    rows = conn.execute(f"""
+        SELECT pl.id, pl.name,
+               -- ultimi 12 mesi, tutte le squadre in cui ha giocato
+               (SELECT SUM(minutes) FROM player_match_stats s
+                 WHERE s.player_id = pl.id AND s.match_bsd_id > 0
+                   AND s.match_date >= date('now', '-{STATS_WINDOW_DAYS} days')),
+               (SELECT SUM(goals) FROM player_match_stats s
+                 WHERE s.player_id = pl.id AND s.match_bsd_id > 0
+                   AND s.match_date >= date('now', '-{STATS_WINDOW_DAYS} days')),
+               (SELECT SUM(minutes) FROM player_match_stats s
+                 WHERE s.player_id = pl.id AND s.match_bsd_id > 0 AND s.xg IS NOT NULL
+                   AND s.match_date >= date('now', '-{STATS_WINDOW_DAYS} days')),
+               (SELECT SUM(xg) FROM player_match_stats s
+                 WHERE s.player_id = pl.id AND s.match_bsd_id > 0 AND s.xg IS NOT NULL
+                   AND s.match_date >= date('now', '-{STATS_WINDOW_DAYS} days')),
+               -- ultime partite della squadra
+               (SELECT COALESCE(SUM(minutes), 0) FROM player_match_stats s
+                 WHERE s.player_id = pl.id AND s.match_bsd_id IN ({marks})),
+               (SELECT COALESCE(SUM(started), 0) FROM player_match_stats s
+                 WHERE s.player_id = pl.id AND s.match_bsd_id IN ({marks}))
+        FROM players pl
+        WHERE pl.team_id = ?
+          AND (pl.availability IS NULL OR pl.availability IN ('', 'available'))
+    """, (*recent, *recent, team_id)).fetchall()
+
+    n = len(recent)
     players_stats = []
-    for player_id, name, xg, goals, minutes in rows:
-        if not minutes or minutes <= 0:
-            continue  # nessun minuto giocato: non possiamo stimare nulla di utile
-        # "Minuti attesi" qui è una prima stima grezza: i minuti medi a
-        # partita in stagione. Una volta collegate le formazioni ufficiali
-        # (vicino al calcio d'inizio), questo numero potrà essere affinato
-        # in base a titolarità reale invece che alla sola media stagionale.
-        matches_played = max(minutes / 75, 1)  # stima approssimativa di quante partite
-        expected_minutes = min(minutes / matches_played, 90)
+    for player_id, name, mins, goals, mins_xg, xg, recent_mins, recent_starts in rows:
+        expected_minutes = min(recent_mins / n, 90)
+        if expected_minutes <= 0 or not mins:
+            continue  # non ha giocato di recente: non lo consideriamo
+        k = PRIOR_MINUTES
+        xg90 = ((xg or 0) + PRIOR_PER_90 * k / 90) / ((mins_xg or 0) + k) * 90
+        goals90 = ((goals or 0) + PRIOR_PER_90 * k / 90) / (mins + k) * 90
         players_stats.append({
             "player_id": player_id,
             "name": name,
-            "xg_per_90": (xg / minutes) * 90 if xg else 0,
-            "goals_per_90": (goals / minutes) * 90 if goals else 0,
+            "xg_per_90": xg90,
+            "goals_per_90": goals90,
             "expected_minutes": expected_minutes,
+            "starting_probability": recent_starts / n,
         })
     return players_stats
 
@@ -62,14 +102,16 @@ def save_player_prediction(conn, player_id, match_id, result):
         INSERT INTO player_predictions
             (player_id, match_id, expected_minutes, starting_probability,
              team_xg_share, expected_goals, prob_score_anytime, computed_at)
-        VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(player_id, match_id) DO UPDATE SET
             expected_minutes = excluded.expected_minutes,
+            starting_probability = excluded.starting_probability,
             team_xg_share = excluded.team_xg_share,
             expected_goals = excluded.expected_goals,
             prob_score_anytime = excluded.prob_score_anytime,
             computed_at = excluded.computed_at
-    """, (player_id, match_id, result["expected_minutes"], result["team_xg_share"],
+    """, (player_id, match_id, round(result["expected_minutes"], 1),
+          round(result["starting_probability"], 2), result["team_xg_share"],
           result["expected_goals"], result["prob_score_anytime"],
           datetime.now(timezone.utc).isoformat()))
 
@@ -80,6 +122,13 @@ def main():
 
     matches = load_upcoming_matches_with_goals(conn)
     print(f"Partite in arrivo con gol attesi disponibili: {len(matches)}")
+
+    # Ricalcoliamo da zero: così spariscono i giocatori nel frattempo
+    # infortunati o trasferiti, invece di restare con la previsione vecchia.
+    if matches:
+        ids = [m[0] for m in matches]
+        conn.execute(f"DELETE FROM player_predictions WHERE match_id IN "
+                     f"({','.join('?' * len(ids))})", ids)
 
     predicted = 0
     for match_id, home_team_id, away_team_id, league, eg_home, eg_away in matches:
