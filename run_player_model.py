@@ -24,11 +24,7 @@ def load_upcoming_matches_with_goals(conn):
         JOIN model_predictions p ON p.match_id = m.id
         WHERE m.home_goals IS NULL AND m.date >= date('now')
           AND p.expected_goals_home IS NOT NULL
-          -- Coppe escluse per ora: il modello europeo stima un numero di gol
-          -- irrealistico (in media oltre 7 a partita in Champions), e i
-          -- marcatori ne ereditano l'errore (es. Kane al 98%). Da riattivare
-          -- quando il modello europeo sarà sistemato.
-          AND m.league NOT IN ('Champions League', 'Europa League', 'Conference League')
+
     """).fetchall()
 
 
