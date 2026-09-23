@@ -1,20 +1,17 @@
 """
-Test esplorativo di OddsPapi (NON tocca data.db né il workflow).
+Test esplorativo di OddsPapi (NON tocca data.db né il workflow) — versione 2.
 
-Obiettivo:
-  1. trovare gli ID dei 5 campionati principali
-  2. scaricare le quote 1X2 con UNA chiamata a /odds-by-tournaments
-  3. vedere quali bookmaker italiani e se Pinnacle sono davvero presenti
-  4. stampare le quote di una partita da confrontare a mano con Oddschecker
+Cosa abbiamo imparato dal primo giro:
+  - ID campionati: Serie A 23, Premier 17, LaLiga 8, Bundesliga 35, Ligue 1 34
+  - /odds-by-tournaments accetta UN SOLO bookmaker per chiamata
+    (parametro 'bookmaker', singolare)
 
-Consumo previsto: 2 richieste (su 250/mese).
+Cosa fa ora:
+  1. /bookmakers -> elenca gli slug esatti dei bookmaker italiani e sharp
+  2. scarica le quote dei 5 campionati per Pinnacle + fino a 2 italiani
+  3. stampa una partita di Serie A da confrontare con Oddschecker
 
-Uso:
-  export ODDSPAPI_KEY=la_tua_chiave      (Windows: set ODDSPAPI_KEY=...)
-  python test_oddspapi.py
-
-Salva anche le risposte grezze in oddspapi_tournaments.json e
-oddspapi_odds.json: se qualcosa non torna, mandamele e aggiusto il parsing.
+Consumo: al massimo 4 richieste (su 250/mese).
 """
 
 import json
@@ -27,68 +24,36 @@ import requests
 BASE_URL = "https://api.oddspapi.io/v4"
 API_KEY = os.environ.get("ODDSPAPI_KEY")
 
-# (nome campionato, paese) — il paese serve a non confondere la Serie A
-# italiana con quella brasiliana, ecc.
-TARGET_LEAGUES = [
-    ("serie a", "italy"),
-    ("premier league", "england"),
-    ("laliga", "spain"),
-    ("bundesliga", "germany"),
-    ("ligue 1", "france"),
-]
+TOURNAMENT_IDS = {"Serie A": 23, "Premier League": 17, "LaLiga": 8,
+                  "Bundesliga": 35, "Ligue 1": 34}
 
-# Parole chiave per riconoscere gli slug dei bookmaker che ci interessano.
-# Non conosciamo ancora gli slug esatti: li cerchiamo per sottostringa.
 ITALIAN_KEYWORDS = [
     "snai", "sisal", "eurobet", "lottomatica", "goldbet", "planetwin",
     "betflag", "bet365", "better", "eplay", "quigioco", "netbet",
-    "betsson", "888", "pokerstars", "admiral", "leovegas", "bwin",
+    "betsson", "888", "pokerstars", "admiral", "leovegas", "bwin", "starcasino",
 ]
 SHARP_KEYWORDS = ["pinnacle", "betfair"]
+# ordine di preferenza per i 2 italiani da provare nelle quote
+PREFERRED_IT = ["snai", "sisal", "eurobet", "lottomatica"]
 
 MARKET_1X2 = "101"
 OUTCOME_LABELS = {"101": "1", "102": "X", "103": "2"}
+requests_used = 0
 
 
-def get(path, **params):
+def get(path, fatal=True, **params):
+    global requests_used
     params["apiKey"] = API_KEY
     r = requests.get(f"{BASE_URL}{path}", params=params, timeout=60)
+    requests_used += 1
+    time.sleep(1.1)  # cooldown dichiarato: 1000 ms
     if r.status_code != 200:
-        print(f"ERRORE {r.status_code} su {path}: {r.text[:500]}")
-        sys.exit(1)
-    time.sleep(1.1)  # cooldown dichiarato dall'API: 1000 ms
+        print(f"ERRORE {r.status_code} su {path} {params.get('bookmaker', '')}: "
+              f"{r.text[:400]}")
+        if fatal:
+            sys.exit(1)
+        return None
     return r.json()
-
-
-def norm(s):
-    return (s or "").lower().replace(" ", "").replace("-", "")
-
-
-def find_tournaments(tournaments):
-    """Cerca gli ID dei 5 campionati. Stampa i candidati per controllo."""
-    if tournaments:
-        print("Campi disponibili in un torneo:", sorted(tournaments[0].keys()))
-    found = {}
-    for league, country in TARGET_LEAGUES:
-        candidates = []
-        for t in tournaments:
-            name = norm(t.get("tournamentName"))
-            # il campo del paese può chiamarsi in modi diversi: li proviamo tutti
-            where = norm(" ".join(str(t.get(k, "")) for k in
-                                  ("categoryName", "countryName", "category",
-                                   "country", "categorySlug")))
-            if norm(league) == name or norm(league) in name:
-                candidates.append((country in where, t))
-        candidates.sort(key=lambda c: not c[0])  # prima quelli col paese giusto
-        print(f"\n{league.title()} ({country}) — candidati:")
-        for ok, t in candidates[:5]:
-            print(f"  {'✔' if ok else ' '} id={t.get('tournamentId')}  "
-                  f"{t.get('tournamentName')}  | "
-                  f"{t.get('categoryName') or t.get('countryName') or '?'}  | "
-                  f"partite in arrivo: {t.get('upcomingFixtures', '?')}")
-        if candidates and candidates[0][0]:
-            found[league] = candidates[0][1]["tournamentId"]
-    return found
 
 
 def price_1x2(book_data):
@@ -103,79 +68,101 @@ def price_1x2(book_data):
     return out
 
 
+def as_list(data):
+    if isinstance(data, dict):
+        return data.get("data") or data.get("fixtures") or [data]
+    return data or []
+
+
 def main():
     if not API_KEY:
-        print("Manca la variabile d'ambiente ODDSPAPI_KEY.")
+        print("Manca il secret ODDSPAPI_KEY.")
         sys.exit(1)
 
-    # --- Richiesta 1: tornei di calcio ---
-    tournaments = get("/tournaments", sportId=10)
-    with open("oddspapi_tournaments.json", "w", encoding="utf-8") as f:
-        json.dump(tournaments, f, ensure_ascii=False, indent=1)
-    ids = find_tournaments(tournaments)
-    if not ids:
-        print("\nNessun campionato riconosciuto: mandami oddspapi_tournaments.json")
-        sys.exit(1)
-    print(f"\nUso questi ID: {ids}")
+    # --- 1. Elenco bookmaker ---
+    books = get("/bookmakers")
+    with open("oddspapi_bookmakers.json", "w", encoding="utf-8") as f:
+        json.dump(books, f, ensure_ascii=False, indent=1)
+    print(f"Bookmaker totali nel sistema: {len(books)}")
 
-    # --- Richiesta 2: quote di tutti e 5 i campionati in una volta ---
-    # Nessun filtro bookmaker: vogliamo vedere TUTTI gli slug disponibili.
-    fixtures = get("/odds-by-tournaments",
-                   tournamentIds=",".join(str(i) for i in ids.values()),
-                   oddsFormat="decimal", language="en")
-    with open("oddspapi_odds.json", "w", encoding="utf-8") as f:
-        json.dump(fixtures, f, ensure_ascii=False, indent=1)
+    def matching(keywords):
+        return [b for b in books
+                if any(k in (b.get("slug", "") + b.get("bookmakerName", "")).lower()
+                       for k in keywords)]
 
-    if isinstance(fixtures, dict):  # a volte le API avvolgono la lista
-        fixtures = fixtures.get("data") or fixtures.get("fixtures") or [fixtures]
-    print(f"\nPartite restituite: {len(fixtures)}")
+    it_books = matching(ITALIAN_KEYWORDS)
+    sharp_books = matching(SHARP_KEYWORDS)
+    for title, lst in (("\nBookmaker italiani (o varianti):", it_books),
+                       ("\nRiferimenti sharp:", sharp_books)):
+        print(title)
+        for b in sorted(lst, key=lambda x: x.get("slug", "")):
+            clone = f"  (clone di {b['cloneOf']})" if b.get("cloneOf") else ""
+            print(f"  {b.get('slug', ''):30s} {b.get('bookmakerName', '')}{clone}")
 
-    # --- Quali bookmaker compaiono, e in quante partite con 1X2 ---
-    coverage = {}
-    for fx in fixtures:
-        for slug, data in (fx.get("bookmakerOdds") or {}).items():
-            if price_1x2(data):
-                coverage[slug] = coverage.get(slug, 0) + 1
-    print(f"Bookmaker distinti con 1X2: {len(coverage)}")
+    # --- 2. Scelta dei bookmaker da interrogare ---
+    slugs = [b["slug"] for b in books]
+    to_query = []
+    if "pinnacle" in slugs:
+        to_query.append("pinnacle")
+    for key in PREFERRED_IT:
+        cands = [b["slug"] for b in it_books if key in b["slug"].lower()]
+        # preferisci la variante italiana se esiste (es. finisce con 'it')
+        cands.sort(key=lambda s: not s.lower().rstrip(".").endswith("it"))
+        if cands and len(to_query) < 3:
+            to_query.append(cands[0])
+    print(f"\nInterrogo le quote per: {to_query}")
 
-    def show(title, keywords):
-        print(f"\n{title}")
-        hits = {s: n for s, n in coverage.items()
-                if any(k in s.lower() for k in keywords)}
-        if not hits:
-            print("  (nessuno trovato)")
-        for s, n in sorted(hits.items(), key=lambda x: -x[1]):
-            print(f"  {s:30s} {n}/{len(fixtures)} partite")
-        return hits
+    ids = ",".join(str(i) for i in TOURNAMENT_IDS.values())
+    odds = {}  # slug -> lista partite
+    for slug in to_query:
+        data = get("/odds-by-tournaments", fatal=False, tournamentIds=ids,
+                   bookmaker=slug, oddsFormat="decimal", language="en")
+        if data is None:
+            continue
+        fixtures = as_list(data)
+        odds[slug] = fixtures
+        with open(f"oddspapi_odds_{slug.replace('.', '_')}.json", "w",
+                  encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        per_league = {}
+        for fx in fixtures:
+            if (fx.get("bookmakerOdds") or {}).get(slug) and \
+               price_1x2(fx["bookmakerOdds"][slug]):
+                per_league[fx.get("tournamentId")] = \
+                    per_league.get(fx.get("tournamentId"), 0) + 1
+        detail = ", ".join(f"{n}: {per_league.get(i, 0)}"
+                           for n, i in TOURNAMENT_IDS.items())
+        print(f"  {slug}: {len(fixtures)} partite, con 1X2 -> {detail}")
 
-    it_books = show("Bookmaker italiani (o varianti) trovati:", ITALIAN_KEYWORDS)
-    sharp_books = show("Riferimenti sharp trovati:", SHARP_KEYWORDS)
-    it_suffix = [s for s in coverage if s.endswith(".it") or s.endswith("-it")
-                 or s.endswith("it") and "." in s]
-    if it_suffix:
-        print("\nSlug con suffisso italiano:", ", ".join(sorted(it_suffix)))
-
-    # --- Una partita di Serie A da confrontare a mano ---
-    serie_a = ids.get("serie a")
-    sample = next((fx for fx in fixtures
-                   if fx.get("tournamentId") == serie_a
-                   and any(s in (fx.get("bookmakerOdds") or {}) for s in it_books)),
-                  None) or (fixtures[0] if fixtures else None)
-    if sample:
-        home = sample.get("participant1Name", sample.get("participant1Id"))
-        away = sample.get("participant2Name", sample.get("participant2Id"))
-        print(f"\n=== Da verificare su Oddschecker / siti bookmaker ===")
-        print(f"{home} - {away}   inizio: {sample.get('startTime')}")
+    # --- 3. Una partita di Serie A da confrontare a mano ---
+    all_fx = {}
+    for slug, fixtures in odds.items():
+        for fx in fixtures:
+            all_fx.setdefault(fx["fixtureId"], fx)
+            all_fx[fx["fixtureId"]].setdefault("_books", {})[slug] = \
+                (fx.get("bookmakerOdds") or {}).get(slug)
+    serie_a = [fx for fx in all_fx.values() if fx.get("tournamentId") == 23]
+    serie_a.sort(key=lambda fx: (-len([v for v in fx["_books"].values() if v]),
+                                 fx.get("startTime", "")))
+    if serie_a:
+        fx = serie_a[0]
+        home = fx.get("participant1Name", fx.get("participant1Id"))
+        away = fx.get("participant2Name", fx.get("participant2Id"))
+        print("\n=== Da verificare su Oddschecker / siti bookmaker ===")
+        print(f"{home} - {away}   inizio: {fx.get('startTime')}")
         print(f"{'bookmaker':30s} {'1':>6s} {'X':>6s} {'2':>6s}   ultimo cambio")
-        for slug in sorted(set(it_books) | set(sharp_books)):
-            data = (sample.get("bookmakerOdds") or {}).get(slug)
+        for slug, data in fx["_books"].items():
             p = price_1x2(data) if data else None
             if p:
                 changed = max((c for _, c in p.values() if c), default="?")
                 print(f"{slug:30s} {p['1'][0] or '-':>6} {p['X'][0] or '-':>6} "
                       f"{p['2'][0] or '-':>6}   {changed}")
+            else:
+                print(f"{slug:30s}   (nessuna quota 1X2)")
+    else:
+        print("\nNessuna partita di Serie A nelle risposte.")
 
-    print("\nFatto. Richieste usate: 2.")
+    print(f"\nFatto. Richieste usate: {requests_used}.")
 
 
 if __name__ == "__main__":
