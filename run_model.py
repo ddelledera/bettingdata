@@ -58,16 +58,21 @@ def list_leagues(conn):
     return [r[0] for r in rows]
 
 
-def save_prediction(conn, match_id, prob_home, prob_draw, prob_away):
+def save_prediction(conn, match_id, prob_home, prob_draw, prob_away,
+                     expected_goals_home=None, expected_goals_away=None):
     conn.execute("""
-        INSERT INTO model_predictions (match_id, prob_home, prob_draw, prob_away, computed_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO model_predictions (match_id, prob_home, prob_draw, prob_away,
+                                        expected_goals_home, expected_goals_away, computed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(match_id) DO UPDATE SET
             prob_home = excluded.prob_home,
             prob_draw = excluded.prob_draw,
             prob_away = excluded.prob_away,
+            expected_goals_home = excluded.expected_goals_home,
+            expected_goals_away = excluded.expected_goals_away,
             computed_at = excluded.computed_at
-    """, (match_id, prob_home, prob_draw, prob_away, datetime.now(timezone.utc).isoformat()))
+    """, (match_id, prob_home, prob_draw, prob_away, expected_goals_home,
+          expected_goals_away, datetime.now(timezone.utc).isoformat()))
 
 
 EUROPEAN_COMPETITIONS = {"Champions League", "Europa League", "Conference League"}
@@ -106,7 +111,8 @@ def main():
             if home not in model.teams or away not in model.teams:
                 continue  # squadra mai vista nei dati storici: non possiamo stimarla
             ph, pd_, pa = model.predict_match(home, away)
-            save_prediction(conn, match_id, ph, pd_, pa)
+            eg_home, eg_away = model.expected_goals(home, away)
+            save_prediction(conn, match_id, ph, pd_, pa, eg_home, eg_away)
             predicted += 1
             print(f"    {home} vs {away}: casa {ph:.0%}  pareggio {pd_:.0%}  trasferta {pa:.0%}")
 
@@ -148,7 +154,8 @@ def main():
                         print(f"    (saltata: {home} vs {away} — non riconosciuta: {', '.join(missing)})")
                         continue
                     ph, pd_, pa = euro_model.predict_match(home, away)
-                    save_prediction(conn, match_id, ph, pd_, pa)
+                    eg_home, eg_away = euro_model.expected_goals(home, away)
+                    save_prediction(conn, match_id, ph, pd_, pa, eg_home, eg_away)
                     predicted += 1
                     print(f"    {home} vs {away}: casa {ph:.0%}  pareggio {pd_:.0%}  trasferta {pa:.0%}")
 
