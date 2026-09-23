@@ -11,6 +11,7 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 from value_calculator import remove_bookmaker_margin, find_value_bets, combine_parlay, find_best_combination
+from markets import model_probabilities, long_label, market_of, MARKET_NAMES
 from github_storage import read_json_file, write_json_file
 import math
 import uuid
@@ -229,7 +230,8 @@ def get_connection():
 def load_upcoming_with_predictions(conn):
     query = """
         SELECT m.id, m.date, m.league, h.name AS home, a.name AS away,
-               p.prob_home, p.prob_draw, p.prob_away
+               p.prob_home, p.prob_draw, p.prob_away,
+               p.prob_btts, p.prob_over15, p.prob_over25, p.prob_over35
         FROM matches m
         JOIN teams h ON m.home_team_id = h.id
         JOIN teams a ON m.away_team_id = a.id
@@ -241,14 +243,14 @@ def load_upcoming_with_predictions(conn):
 
 
 def best_odds_for_match(conn, match_id):
-    """Per ogni esito (1/X/2), trova la quota più alta tra i bookmaker,
-    usando SOLO l'ultima quota registrata per ciascun bookmaker (non il
-    massimo tra tutti gli snapshot storici mai salvati, che potrebbe non
-    essere più la quota realmente disponibile oggi).
+    """Per ogni esito di ogni mercato (1X2, doppia chance, Goal/No Goal,
+    Under/Over), trova la quota più alta tra i bookmaker, usando SOLO
+    l'ultima quota registrata per ciascun bookmaker (non il massimo tra
+    tutti gli snapshot storici, che potrebbe non essere più disponibile).
 
-    Si usano PRIMA i soli bookmaker italiani (ADM): sono le quote che puoi
-    davvero giocare. Solo se per quella partita non ci sono quote italiane
-    complete (es. alcune partite di coppa europea) si ripiega su tutti."""
+    Per ogni esito si usano PRIMA i soli bookmaker italiani (ADM): sono le
+    quote che puoi davvero giocare. Solo se nessun italiano quota
+    quell'esito si ripiega sugli altri (es. alcune partite di coppa)."""
     query = """
         WITH ultima_quota AS (
             SELECT bookmaker, selection, odds,
@@ -257,22 +259,22 @@ def best_odds_for_match(conn, match_id):
                        ORDER BY snapshot_time DESC
                    ) AS rn
             FROM odds_snapshots
-            WHERE match_id = ? {filtro}
+            WHERE match_id = ?
         )
-        SELECT selection, MAX(odds) as best_odds, bookmaker
-        FROM ultima_quota
-        WHERE rn = 1
-        GROUP BY selection
+        SELECT selection, odds, bookmaker FROM ultima_quota WHERE rn = 1
     """
-    italiani = sorted(BOOKMAKER_ITALIA)
-    segnaposti = ",".join("?" * len(italiani))
-    rows = conn.execute(query.format(filtro=f"AND bookmaker IN ({segnaposti})"),
-                        (match_id, *italiani)).fetchall()
-    if len(rows) < 3:
-        rows = conn.execute(query.format(filtro=""), (match_id,)).fetchall()
-    if len(rows) < 3:
+    best, best_it = {}, {}
+    for selection, odds, bookmaker in conn.execute(query, (match_id,)).fetchall():
+        if selection not in best or odds > best[selection][0]:
+            best[selection] = (odds, bookmaker)
+        if bookmaker in BOOKMAKER_ITALIA and (selection not in best_it
+                                             or odds > best_it[selection][0]):
+            best_it[selection] = (odds, bookmaker)
+    chosen = {sel: best_it.get(sel, val) for sel, val in best.items()}
+    if not chosen:
         return None
-    return {r[0]: r[1] for r in rows}, {r[0]: r[2] for r in rows}
+    return ({sel: v[0] for sel, v in chosen.items()},
+            {sel: v[1] for sel, v in chosen.items()})
 
 
 def list_bookmakers(conn):
@@ -320,7 +322,7 @@ def odds_by_bookmaker_for_match(conn, match_id, bookmaker):
     for selection, o in rows:
         if selection not in odds:
             odds[selection] = o
-    return odds if len(odds) >= 3 else None
+    return odds or None
 
 
 def risk_label(odds):
@@ -411,7 +413,7 @@ def render_leg_row(leg):
     esito scelto, quota e probabilità del modello ben distinti visivamente.
     Il livello di rischio è indicato sia dal colore del bordo sia da
     un'etichetta di testo, per chi non riesce a distinguere bene i colori."""
-    esito_label = {"Home": "1 · casa", "Draw": "X · pareggio", "Away": "2 · trasferta"}[leg["selection"]]
+    esito_label = long_label(leg["selection"])
     st.markdown(f"""
     <div class="leg-row {risk_css_class(leg['odds'])}">
         <div class="leg-match">
@@ -490,9 +492,9 @@ def render_slip_card(slip):
                          f"risultato vero: {leg['actual_result']}")
 
 
-def compute_opportunities(conn, matches_df, min_ev):
+def compute_opportunities(conn, matches_df, min_ev, markets=None):
     """Calcola tutte le opportunità di valore (quota migliore tra tutti i
-    bookmaker), usata dalla scheda principale."""
+    bookmaker), su tutti i mercati scelti, usata dalla scheda principale."""
     all_opportunities = []
     for _, row in matches_df.iterrows():
         odds_info = best_odds_for_match(conn, row["id"])
@@ -500,7 +502,9 @@ def compute_opportunities(conn, matches_df, min_ev):
             continue
         best_odds, best_bookmaker = odds_info
 
-        model_probs = {"Home": row["prob_home"], "Draw": row["prob_draw"], "Away": row["prob_away"]}
+        model_probs = model_probabilities(row)
+        if markets:
+            model_probs = {k: v for k, v in model_probs.items() if market_of(k) in markets}
         value_bets = find_value_bets(model_probs, best_odds, min_ev=min_ev)
 
         for vb in value_bets:
@@ -508,7 +512,7 @@ def compute_opportunities(conn, matches_df, min_ev):
                 "Partita": f"{row['home']} vs {row['away']}",
                 "Campionato": row["league"],
                 "Data": row["date"],
-                "Esito": {"Home": "1 (casa)", "Draw": "X (pareggio)", "Away": "2 (trasferta)"}[vb["selection"]],
+                "Esito": long_label(vb["selection"]),
                 "Nostra probabilità": round(vb["model_probability"] * 100, 1),
                 "Quota migliore": vb["odds"],
                 "Bookmaker": best_bookmaker[vb["selection"]],
@@ -543,11 +547,13 @@ tab_opportunita, tab_schedina, tab_storico, tab_marcatori, tab_tutte = st.tabs(
 # ---------------------------------------------------------------------------
 with tab_opportunita:
     filtered_opp = competition_filter(matches_df, key="comp_opportunita")
+    markets_opp = st.multiselect("Mercato:", MARKET_NAMES, default=MARKET_NAMES,
+                                 key="mercati_opportunita")
 
     min_ev = st.slider("Mostra solo scommesse con valore atteso di almeno:",
                         min_value=0, max_value=20, value=3, format="%d%%") / 100
 
-    all_opportunities = compute_opportunities(conn, filtered_opp, min_ev)
+    all_opportunities = compute_opportunities(conn, filtered_opp, min_ev, markets_opp)
 
     if not all_opportunities:
         st.info("Nessuna scommessa di valore trovata al momento con la soglia scelta. "
@@ -595,6 +601,15 @@ with tab_schedina:
                                                format_func=bookmaker_display_label, key="sched_bookmaker")
         with col_b:
             stake = st.number_input("Puntata (€):", min_value=1.0, value=10.0, step=1.0, key="sched_stake")
+        markets_sched = st.multiselect(
+            "Mercati da usare:", MARKET_NAMES, default=MARKET_NAMES, key="mercati_schedina",
+            help="Al massimo una selezione per partita: esiti della stessa partita "
+                 "(es. 1 e Over 2.5) sono legati tra loro e non si possono combinare "
+                 "come se fossero indipendenti.")
+
+        def sched_probs(row):
+            return {k: v for k, v in model_probabilities(row).items()
+                    if market_of(k) in markets_sched}
 
         mode = st.radio(
             "Come vuoi costruire la schedina?",
@@ -613,9 +628,8 @@ with tab_schedina:
                 bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker)
                 if bm_odds is None:
                     continue
-                model_probs = {"Home": row["prob_home"], "Draw": row["prob_draw"], "Away": row["prob_away"]}
-                for vb in find_value_bets(model_probs, bm_odds, min_ev=0.0):
-                    esito_label = {"Home": "1 (casa)", "Draw": "X (pareggio)", "Away": "2 (trasferta)"}[vb["selection"]]
+                for vb in find_value_bets(sched_probs(row), bm_odds, min_ev=0.0):
+                    esito_label = long_label(vb["selection"])
                     label = (f"{row['home']} vs {row['away']} — {esito_label} @ {vb['odds']} "
                              f"(nostra prob. {vb['model_probability']:.0%}, EV {vb['ev']:+.1%})")
                     vb["match_id"] = row["id"]
@@ -631,7 +645,15 @@ with tab_schedina:
                     options=list(candidate_legs.keys()),
                 )
                 if chosen:
-                    combo = [candidate_legs[c] for c in chosen]
+                    combo, seen = [], set()
+                    for c in chosen:
+                        leg = candidate_legs[c]
+                        if leg["match_id"] in seen:
+                            st.warning(f"{leg['match_label']}: puoi mettere una sola selezione "
+                                       "per partita — tengo solo la prima che hai scelto.")
+                            continue
+                        seen.add(leg["match_id"])
+                        combo.append(leg)
                 else:
                     st.caption("Seleziona una o più partite qui sopra per vedere la schedina combinata.")
 
@@ -663,8 +685,9 @@ with tab_schedina:
                     bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker)
                     if bm_odds is None:
                         continue
-                    model_probs = {"Home": row["prob_home"], "Draw": row["prob_draw"], "Away": row["prob_away"]}
-                    candidates = find_value_bets(model_probs, bm_odds, min_ev=-1)
+                    # solo selezioni con valore (EV >= 0): la schedina deve essere
+                    # conveniente, non solo "probabile"
+                    candidates = find_value_bets(sched_probs(row), bm_odds, min_ev=0.0)
                     candidates = [c for c in candidates
                                   if risk_order[risk_label(c["odds"])] <= max_risk_level]
                     if candidates:
@@ -893,25 +916,27 @@ with tab_tutte:
     display_df["prob_1x"] = (display_df["prob_home"] + display_df["prob_draw"]) * 100
     display_df["prob_x2"] = (display_df["prob_draw"] + display_df["prob_away"]) * 100
     display_df["prob_12"] = (display_df["prob_home"] + display_df["prob_away"]) * 100
-    for col in ["prob_home", "prob_draw", "prob_away"]:
+    for col in ["prob_home", "prob_draw", "prob_away", "prob_btts", "prob_over25"]:
         display_df[col] = display_df[col] * 100
 
-    percent_cols = ["Prob. 1", "Prob. X", "Prob. 2", "Prob. 1X", "Prob. X2", "Prob. 12"]
+    percent_cols = ["Prob. 1", "Prob. X", "Prob. 2", "Prob. 1X", "Prob. X2", "Prob. 12",
+                    "Prob. Goal", "Prob. Over 2.5"]
     st.dataframe(
         display_df[["date", "league", "home", "away", "prob_home", "prob_draw", "prob_away",
-                     "prob_1x", "prob_x2", "prob_12"]]
+                     "prob_1x", "prob_x2", "prob_12", "prob_btts", "prob_over25"]]
         .rename(columns={
             "date": "Data", "league": "Campionato", "home": "Casa", "away": "Trasferta",
             "prob_home": "Prob. 1", "prob_draw": "Prob. X", "prob_away": "Prob. 2",
             "prob_1x": "Prob. 1X", "prob_x2": "Prob. X2", "prob_12": "Prob. 12",
+            "prob_btts": "Prob. Goal", "prob_over25": "Prob. Over 2.5",
         }),
         width='stretch', hide_index=True,
         column_config={col: st.column_config.NumberColumn(col, format="%.0f%%") for col in percent_cols},
     )
     st.caption(
         "1X = vittoria casa o pareggio · X2 = pareggio o vittoria trasferta · "
-        "12 = vittoria di una delle due squadre (esclude il pareggio). "
-        "Sono le nostre probabilità di modello — qui non abbiamo ancora le quote "
-        "reali dei bookmaker per questi mercati, quindi non possiamo dirti se sono "
-        "convenienti, solo quanto le riteniamo probabili."
+        "12 = vittoria di una delle due squadre (esclude il pareggio) · "
+        "Goal = segnano entrambe. Sono le probabilità del nostro modello: il "
+        "confronto con le quote (e quindi la convenienza) è nella scheda "
+        "'Opportunità di valore'."
     )
