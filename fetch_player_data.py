@@ -12,6 +12,7 @@ non torna, il log dice esattamente cosa correggere.
 
 import os
 import sqlite3
+from db_utils import init_db
 import requests
 from datetime import datetime, timezone
 from team_utils import normalize_team_name
@@ -87,8 +88,7 @@ def main():
         )
 
     conn = sqlite3.connect(DB_PATH)
-    with open("schema.sql") as f:
-        conn.executescript(f.read())
+    init_db(conn)
     cur = conn.cursor()
 
     # Squadre con almeno una partita in arrivo, nei campionati che seguiamo
