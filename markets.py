@@ -76,3 +76,43 @@ def model_probabilities(row):
         if p is not None and p == p:
             probs[f"Over{line}"], probs[f"Under{line}"] = p, 1 - p
     return probs
+
+
+# ---------------------------------------------------------------------------
+# Probabilità "giuste" dal prezzo di Pinnacle (il bookmaker più efficiente).
+# Il backtest ha mostrato che il nostro modello prevede PEGGIO del mercato,
+# mentre giocare le quote sopra il prezzo giusto di Pinnacle ha dato CLV
+# positivo: il valore si misura quindi contro Pinnacle, non contro il modello.
+# ---------------------------------------------------------------------------
+TWO_WAY_GROUPS = [("Goal", "NoGoal"), ("Over1.5", "Under1.5"),
+                  ("Over2.5", "Under2.5"), ("Over3.5", "Under3.5")]
+
+
+def devig_power(odds_list):
+    """Toglie il margine con il metodo "potenza": il margine pesa di più sugli
+    sfavoriti, come nella realtà. (Il metodo proporzionale lascia agli
+    sfavoriti una probabilità troppo alta e fa sembrare di valore scommesse
+    che non lo sono: nel backtest, sulle quote oltre 5, -35%/-60%.)"""
+    inv = [1 / o for o in odds_list]
+    lo, hi = 1.0, 3.0
+    for _ in range(60):
+        k = (lo + hi) / 2
+        if sum(x ** k for x in inv) > 1:
+            lo = k
+        else:
+            hi = k
+    return [x ** k for x in inv]
+
+
+def fair_probabilities(reference_odds):
+    """{selezione: quota Pinnacle} -> {selezione: probabilità senza margine}.
+    La doppia chance si ricava dall'1X2 (i suoi tre esiti si sovrappongono)."""
+    fair = {}
+    if all(reference_odds.get(k) for k in ("Home", "Draw", "Away")):
+        ph, pd_, pa = devig_power([reference_odds[k] for k in ("Home", "Draw", "Away")])
+        fair.update({"Home": ph, "Draw": pd_, "Away": pa,
+                     "1X": ph + pd_, "X2": pd_ + pa, "12": ph + pa})
+    for a, b in TWO_WAY_GROUPS:
+        if reference_odds.get(a) and reference_odds.get(b):
+            fair[a], fair[b] = devig_power([reference_odds[a], reference_odds[b]])
+    return fair
