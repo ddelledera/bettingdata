@@ -75,6 +75,10 @@ jobs:
         run: python run_player_model.py
         continue-on-error: true  # stesso motivo
 
+      - name: Scommesse virtuali marcatori (prova dal vivo)
+        run: python record_scorer_bets.py
+        continue-on-error: true  # è una prova: non deve bloccare il resto
+
       - name: Controlla le schedine confermate
         run: python check_results.py
 
