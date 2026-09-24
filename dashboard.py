@@ -10,7 +10,8 @@ Non c'è nulla da capire o configurare qui dentro.
 import sqlite3
 import pandas as pd
 import streamlit as st
-from value_calculator import remove_bookmaker_margin, find_value_bets, combine_parlay, find_best_combination
+from value_calculator import (remove_bookmaker_margin, find_value_bets, combine_parlay, find_best_combination,
+                              find_tradeoff_frontier, pick_representatives)
 from markets import (model_probabilities, long_label, market_of, MARKET_NAMES, scorer_key,
                      fair_probabilities, is_winner)
 from value_calculator import expected_value, kelly_fraction
@@ -785,7 +786,8 @@ with tab_schedina:
 
         mode = st.radio(
             "Come vuoi costruire la schedina?",
-            ["🖐️ Scelgo io le partite", "🔍 Trova la combinazione migliore per me"],
+            ["🖐️ Scelgo io le partite", "🔍 Trova la combinazione migliore per me",
+             "⚖️ Miglior equilibrio probabilità/valore"],
             key="schedina_mode", horizontal=True,
         )
         st.divider()
@@ -826,6 +828,107 @@ with tab_schedina:
                         combo.append(leg)
                 else:
                     st.caption("Seleziona una o più partite qui sopra per vedere la schedina combinata.")
+
+        elif mode.startswith("⚖️"):
+            # --- Modalità equilibrio: nessun obiettivo da fissare, scelgo io il
+            # miglior compromesso tra probabilità di vincere e valore ---
+            st.caption(
+                "Per ogni livello di quota cerco la schedina più probabile (a parità di quota "
+                "è anche quella con più valore, perché valore = probabilità × quota). Poi ti "
+                "consiglio quella che fa crescere di più il capitale nel lungo periodo "
+                "(criterio di Kelly): né la più sicura con poco valore, né la più ricca quasi "
+                "impossibile da vincere. Col cursore puoi spostarti verso una delle due."
+            )
+            col_e, col_f = st.columns(2)
+            with col_e:
+                num_matches_eq = st.slider("Numero di partite:", min_value=1, max_value=5,
+                                           value=3, key="eq_num_matches")
+            with col_f:
+                max_risk_eq = st.select_slider(
+                    "Quota massima per singola selezione:",
+                    options=["🟢 Solo basse (≤1.80)", "🟡 Fino a medie (≤3.00)", "🔴 Qualsiasi"],
+                    value="🔴 Qualsiasi", key="eq_max_risk",
+                )
+            risk_order_eq = {"🟢 Quota bassa": 0, "🟡 Quota media": 1, "🔴 Quota alta": 2}
+            max_level_eq = {"🟢 Solo basse (≤1.80)": 0, "🟡 Fino a medie (≤3.00)": 1,
+                            "🔴 Qualsiasi": 2}[max_risk_eq]
+
+            if st.button("⚖️ Calcola le combinazioni", type="primary"):
+                legs_by_match = {}
+                for _, row in filtered_sched.iterrows():
+                    bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker) or {}
+                    # solo selezioni con valore (EV >= 0), come nelle altre modalità
+                    candidates = (entro_quota_max(find_value_bets(sched_probs(row), bm_odds, min_ev=0.0))
+                                  + sched_scorer_legs(row))
+                    candidates = [c for c in candidates
+                                  if risk_order_eq[risk_label(c["odds"])] <= max_level_eq]
+                    for c in candidates:
+                        c["match_id"] = row["id"]
+                        c["match_label"] = f"{row['home']} vs {row['away']}"
+                        c["match_date"] = row["date"]
+                    if candidates:
+                        legs_by_match[row["id"]] = candidates
+
+                frontier = find_tradeoff_frontier(legs_by_match, num_matches_eq)
+                if not frontier:
+                    st.session_state.pop("eq_points", None)
+                    st.warning(f"Non ci sono abbastanza partite con valore su {selected_bookmaker} "
+                               f"(con la quota massima scelta) per formare una schedina di "
+                               f"{num_matches_eq} partite. Riduci il numero di partite o allarga "
+                               f"la quota massima.")
+                else:
+                    st.session_state["eq_points"] = pick_representatives(frontier)
+                    st.session_state.pop("eq_choice", None)   # riparte dalla consigliata
+
+            if "eq_points" in st.session_state:
+                points = st.session_state["eq_points"]
+                best_i = max(range(len(points)), key=lambda i: points[i]["kelly_growth"])
+
+                def eq_label(i):
+                    p = points[i]
+                    tag = " ⭐ consigliata" if i == best_i else ""
+                    return f"quota {p['odds']:.2f} · vince {p['probability']:.0%}{tag}"
+
+                if len(points) > 1:
+                    labels = [eq_label(i) for i in range(len(points))]
+                    chosen_label = st.select_slider(
+                        "Più sicura ← → più remunerativa",
+                        options=labels, value=labels[best_i], key="eq_choice",
+                    )
+                    idx = labels.index(chosen_label)
+                else:
+                    idx = 0
+
+                try:
+                    import altair as alt
+                    chart_df = pd.DataFrame([{
+                        "Probabilità di vincita (%)": p["probability"] * 100,
+                        "Valore atteso (%)": p["ev"] * 100,
+                        "Quota": round(p["odds"], 2),
+                        "Tipo": ("Scelta" if i == idx else
+                                 "Consigliata" if i == best_i else "Alternativa"),
+                    } for i, p in enumerate(points)])
+                    chart = alt.Chart(chart_df).mark_circle(size=110).encode(
+                        x=alt.X("Probabilità di vincita (%):Q", scale=alt.Scale(type="log")),
+                        y="Valore atteso (%):Q",
+                        color=alt.Color("Tipo:N", scale=alt.Scale(
+                            domain=["Scelta", "Consigliata", "Alternativa"],
+                            range=["#e4572e", "#f2a541", "#8a8a8a"])),
+                        tooltip=["Quota", "Probabilità di vincita (%)", "Valore atteso (%)"],
+                    ).properties(height=260)
+                    st.altair_chart(chart, width="stretch")
+                except Exception:
+                    pass  # il grafico è solo un aiuto: se manca altair si va avanti senza
+
+                chosen_pt = points[idx]
+                combo = list(chosen_pt["combo"])
+                target_roi_pct = round((chosen_pt["odds"] - 1) * 100)
+                stake_pct = kelly_fraction(chosen_pt["probability"], chosen_pt["odds"]) * 100
+                st.caption(
+                    f"Valore atteso di questa schedina: {chosen_pt['ev']:+.1%} "
+                    f"(probabilità giuste da Pinnacle). Puntata prudente suggerita "
+                    f"(Kelly 1/4): {stake_pct:.2f}% del capitale che dedichi alle scommesse."
+                )
 
         else:
             # --- Modalità automatica: dato un obiettivo, trovo io la combinazione ---
@@ -910,7 +1013,8 @@ with tab_schedina:
             c3.metric("Vincita netta potenziale", f"€{projected_profit:.2f}")
 
             st.caption(
-                f"Probabilità combinata secondo il nostro modello: {combined_prob:.1%}. "
+                f"Probabilità combinata (prezzi giusti di Pinnacle; per i marcatori il nostro "
+                f"modello): {combined_prob:.1%}. "
                 "Assume che le partite scelte siano indipendenti tra loro (vero nella "
                 "stragrande maggioranza dei casi, a meno di partite con conseguenze dirette "
                 "l'una sull'altra)."
@@ -930,7 +1034,8 @@ with tab_schedina:
                         "bookmaker": selected_bookmaker,
                         "stake": stake,
                         "target_roi_pct": target_roi_pct,
-                        "mode": "automatica" if mode.startswith("🔍") else "manuale",
+                        "mode": ("automatica" if mode.startswith("🔍") else
+                                 "equilibrio" if mode.startswith("⚖️") else "manuale"),
                         "status": "pending",
                         "combined_odds": round(combined_odds, 3),
                         "legs": [
@@ -950,6 +1055,7 @@ with tab_schedina:
                                          f"Nuova schedina confermata ({len(slip['legs'])} partite)")
                         st.success("Schedina salvata! La trovi nella scheda 'Storico schedine'.")
                         st.session_state.pop("auto_combo", None)
+                        st.session_state.pop("eq_points", None)
                     except Exception as e:
                         st.error(f"Non sono riuscito a salvare la schedina: {e}")
 
@@ -979,6 +1085,39 @@ with tab_storico:
             st.caption("Nessuna schedina in attesa al momento.")
         for slip in sorted(pending, key=lambda s: s["created_at"], reverse=True):
             render_slip_card(slip)
+            slip_id = slip["id"]
+            confirm_key = f"confirm_delete_{slip_id}"
+            if not st.session_state.get(confirm_key):
+                if st.button("🗑️ Cancella", key=f"delete_{slip_id}"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
+            else:
+                st.warning("Vuoi davvero cancellare questa schedina? Non si può annullare.")
+                col_yes, col_no, _ = st.columns([1, 1, 3])
+                if col_yes.button("Sì, cancella", key=f"yes_{slip_id}", type="primary"):
+                    try:
+                        # rileggo il file appena prima di scrivere: nel frattempo il
+                        # resoconto automatico potrebbe averlo aggiornato
+                        current, sha = read_json_file(GITHUB_OWNER, GITHUB_REPO, SLIPS_PATH,
+                                                      github_token, default=[])
+                        target = next((x for x in current if x.get("id") == slip_id), None)
+                        if target is None:
+                            st.info("Questa schedina non c'è più: forse è già stata cancellata.")
+                        elif target.get("status") != "pending":
+                            st.error("Nel frattempo questa schedina si è conclusa: non la cancello, "
+                                     "così il suo risultato resta nello storico.")
+                        else:
+                            remaining = [x for x in current if x.get("id") != slip_id]
+                            write_json_file(GITHUB_OWNER, GITHUB_REPO, SLIPS_PATH, github_token,
+                                            remaining, sha,
+                                            f"Schedina cancellata ({len(target['legs'])} partite)")
+                            st.session_state.pop(confirm_key, None)
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Non sono riuscito a cancellare la schedina: {e}")
+                if col_no.button("Annulla", key=f"no_{slip_id}"):
+                    st.session_state.pop(confirm_key, None)
+                    st.rerun()
 
         st.divider()
         st.subheader(f"Concluse ({len(settled)})")
