@@ -134,6 +134,12 @@ def walk_forward(df, league):
                 "pin_close": devig([r.get("PSCH"), r.get("PSCD"), r.get("PSCA")]),
                 "odds_ou": [col(r, "Avg>2.5"), col(r, "Avg<2.5")],
                 "pin_close_ou": devig([r.get("PC>2.5"), r.get("PC<2.5")]),
+                # per la strategia "bookmaker contro Pinnacle" (senza modello)
+                "odds_b365": [col(r, "B365H"), col(r, "B365D"), col(r, "B365A")],
+                "odds_max": [col(r, "MaxH"), col(r, "MaxD"), col(r, "MaxA")],
+                "pin_pre_ou": devig([r.get("P>2.5"), r.get("P<2.5")]),
+                "odds_ou_b365": [col(r, "B365>2.5"), col(r, "B365<2.5")],
+                "odds_ou_max": [col(r, "Max>2.5"), col(r, "Max<2.5")],
             })
         print(f"  {league} {m_start:%Y-%m}: {len(test)} partite")
     return records
@@ -200,6 +206,36 @@ def betting(records, prob_fn, odds_fn, outcome_fn, n_sel):
     return out, total
 
 
+SHARP_THRESHOLDS = [0.0, 0.02, 0.05]
+
+
+def sharp_vs_soft(records, odds_key, fair_key, close_key, outcome_fn, n_sel):
+    """Strategia SENZA modello: si gioca quando la quota di un bookmaker è più
+    alta della quota "giusta" di Pinnacle (senza margine) nello stesso
+    momento. È il metodo classico del value betting: il bookmaker più
+    efficiente fa da stima della probabilità vera."""
+    out = []
+    for t in SHARP_THRESHOLDS:
+        n, profit, clv = 0, 0.0, []
+        for r in records:
+            odds, fair, close = r.get(odds_key), r.get(fair_key), r.get(close_key)
+            if not odds or not fair:
+                continue
+            for k in range(n_sel):
+                if not odds[k] or odds[k] * fair[k] - 1 < t:
+                    continue
+                n += 1
+                won = outcome_fn(r) == k
+                profit += (odds[k] - 1) if won else -1
+                if close:
+                    clv.append(odds[k] * close[k] - 1)
+        if n:
+            out.append({"soglia_vantaggio": f"{t:+.0%}", "scommesse": n,
+                        "roi": round(profit / n, 3),
+                        "clv_medio": round(float(np.mean(clv)), 3) if clv else None})
+    return out
+
+
 def summarize(records):
     report = {}
     r1 = [r for r in records if r["pin_close"]]
@@ -249,6 +285,16 @@ def summarize(records):
         records, lambda r: [r["p_over25"], 1 - r["p_over25"]], lambda r: r["odds_ou"],
         lambda r: 1 - r["over25"], 2)
     report["goal_no_goal"] = {"calibrazione": calibration([(r["p_btts"], r["btts"]) for r in records])}
+    report["contro_pinnacle"] = {
+        "1x2_bet365": sharp_vs_soft(records, "odds_b365", "pin_pre", "pin_close",
+                                    lambda r: r["result"], 3),
+        "1x2_quota_massima": sharp_vs_soft(records, "odds_max", "pin_pre", "pin_close",
+                                           lambda r: r["result"], 3),
+        "ou25_bet365": sharp_vs_soft(records, "odds_ou_b365", "pin_pre_ou", "pin_close_ou",
+                                     lambda r: 1 - r["over25"], 2),
+        "ou25_quota_massima": sharp_vs_soft(records, "odds_ou_max", "pin_pre_ou", "pin_close_ou",
+                                            lambda r: 1 - r["over25"], 2),
+    }
     return report
 
 
@@ -279,6 +325,10 @@ def main():
     print("scommesse 1X2 per fascia di EV:")
     for b in report["1x2"]["scommesse_modello"]:
         print("  ", b)
+    print("strategia senza modello: bookmaker contro Pinnacle")
+    for name, rows in report["contro_pinnacle"].items():
+        for b in rows:
+            print("  ", name, b)
 
 
 if __name__ == "__main__":
