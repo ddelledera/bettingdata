@@ -1,0 +1,1146 @@
+{
+ "sviluppo": {
+  "previsioni": 38586,
+  "partite": 1299,
+  "frequenza_reale": 0.0812,
+  "da": "2025-10-28",
+  "a": "2026-05-24",
+  "varianti": [
+   {
+    "variante": "M0 attuale (xG 65% + gol 35%)",
+    "log_loss": 0.26129,
+    "brier": 0.07014,
+    "prevista_media": 0.071,
+    "contro_M0_log_loss": null,
+    "contro_M0_brier": null,
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 30004,
+      "prevista": 0.039,
+      "reale": 0.052
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 6030,
+      "prevista": 0.14,
+      "reale": 0.141
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 1802,
+      "prevista": 0.241,
+      "reale": 0.248
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 565,
+      "prevista": 0.34,
+      "reale": 0.338
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 141,
+      "prevista": 0.44,
+      "reale": 0.383
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 44,
+      "prevista": 0.564,
+      "reale": 0.545
+     }
+    ]
+   },
+   {
+    "variante": "M1 npxG",
+    "log_loss": 0.26157,
+    "brier": 0.07027,
+    "prevista_media": 0.0712,
+    "contro_M0_log_loss": {
+     "differenza": 0.00028,
+     "da": -0.00037,
+     "a": 0.00091,
+     "significativa": false
+    },
+    "contro_M0_brier": {
+     "differenza": 0.00013,
+     "da": -2e-05,
+     "a": 0.00027,
+     "significativa": false
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 30102,
+      "prevista": 0.042,
+      "reale": 0.053
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 6209,
+      "prevista": 0.139,
+      "reale": 0.144
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 1654,
+      "prevista": 0.241,
+      "reale": 0.249
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 490,
+      "prevista": 0.34,
+      "reale": 0.333
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 103,
+      "prevista": 0.44,
+      "reale": 0.466
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 28,
+      "prevista": 0.544,
+      "reale": 0.5
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG + rigori",
+    "log_loss": 0.26081,
+    "brier": 0.07004,
+    "prevista_media": 0.0712,
+    "contro_M0_log_loss": {
+     "differenza": -0.00048,
+     "da": -0.00096,
+     "a": -4e-05,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.0001,
+     "da": -0.0002,
+     "a": -1e-05,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 30072,
+      "prevista": 0.04,
+      "reale": 0.052
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 5976,
+      "prevista": 0.14,
+      "reale": 0.146
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 1804,
+      "prevista": 0.241,
+      "reale": 0.246
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 568,
+      "prevista": 0.34,
+      "reale": 0.327
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 133,
+      "prevista": 0.433,
+      "reale": 0.466
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 33,
+      "prevista": 0.549,
+      "reale": 0.485
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG 90% + gol 10% + rigori",
+    "log_loss": 0.2609,
+    "brier": 0.07005,
+    "prevista_media": 0.0712,
+    "contro_M0_log_loss": {
+     "differenza": -0.00039,
+     "da": -0.00075,
+     "a": -6e-05,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -9e-05,
+     "da": -0.00017,
+     "a": -2e-05,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 30012,
+      "prevista": 0.04,
+      "reale": 0.052
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 6026,
+      "prevista": 0.14,
+      "reale": 0.143
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 1814,
+      "prevista": 0.24,
+      "reale": 0.242
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 570,
+      "prevista": 0.34,
+      "reale": 0.339
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 131,
+      "prevista": 0.435,
+      "reale": 0.443
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 33,
+      "prevista": 0.552,
+      "reale": 0.515
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG 75% + gol 25% + rigori",
+    "log_loss": 0.26132,
+    "brier": 0.07011,
+    "prevista_media": 0.0712,
+    "contro_M0_log_loss": {
+     "differenza": 3e-05,
+     "da": -0.00018,
+     "a": 0.00024,
+     "significativa": false
+    },
+    "contro_M0_brier": {
+     "differenza": -3e-05,
+     "da": -8e-05,
+     "a": 2e-05,
+     "significativa": false
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 29911,
+      "prevista": 0.04,
+      "reale": 0.052
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 6104,
+      "prevista": 0.14,
+      "reale": 0.14
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 1830,
+      "prevista": 0.24,
+      "reale": 0.244
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 575,
+      "prevista": 0.339,
+      "reale": 0.341
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 131,
+      "prevista": 0.436,
+      "reale": 0.412
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 35,
+      "prevista": 0.552,
+      "reale": 0.514
+     }
+    ]
+   },
+   {
+    "variante": "M0 attuale (xG 65% + gol 35%) | se gioca",
+    "log_loss": 0.25669,
+    "brier": 0.06988,
+    "prevista_media": 0.0824,
+    "contro_M0_log_loss": {
+     "differenza": -0.00459,
+     "da": -0.00641,
+     "a": -0.00293,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.00026,
+     "da": -0.00049,
+     "a": -5e-05,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 28359,
+      "prevista": 0.046,
+      "reale": 0.048
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 7153,
+      "prevista": 0.14,
+      "reale": 0.132
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 2124,
+      "prevista": 0.241,
+      "reale": 0.234
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 699,
+      "prevista": 0.34,
+      "reale": 0.323
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 187,
+      "prevista": 0.44,
+      "reale": 0.364
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 64,
+      "prevista": 0.568,
+      "reale": 0.469
+     }
+    ]
+   },
+   {
+    "variante": "M1 npxG | se gioca",
+    "log_loss": 0.25721,
+    "brier": 0.06999,
+    "prevista_media": 0.0828,
+    "contro_M0_log_loss": {
+     "differenza": -0.00408,
+     "da": -0.00594,
+     "a": -0.00244,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.00015,
+     "da": -0.00038,
+     "a": 7e-05,
+     "significativa": false
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 28300,
+      "prevista": 0.049,
+      "reale": 0.049
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 7497,
+      "prevista": 0.139,
+      "reale": 0.133
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 2018,
+      "prevista": 0.241,
+      "reale": 0.241
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 578,
+      "prevista": 0.34,
+      "reale": 0.32
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 151,
+      "prevista": 0.441,
+      "reale": 0.424
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 42,
+      "prevista": 0.545,
+      "reale": 0.381
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG + rigori | se gioca",
+    "log_loss": 0.25609,
+    "brier": 0.06973,
+    "prevista_media": 0.0824,
+    "contro_M0_log_loss": {
+     "differenza": -0.0052,
+     "da": -0.00701,
+     "a": -0.00353,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.00041,
+     "da": -0.00064,
+     "a": -0.00019,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 28396,
+      "prevista": 0.047,
+      "reale": 0.048
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 7129,
+      "prevista": 0.139,
+      "reale": 0.133
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 2144,
+      "prevista": 0.241,
+      "reale": 0.243
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 681,
+      "prevista": 0.338,
+      "reale": 0.305
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 182,
+      "prevista": 0.434,
+      "reale": 0.429
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 54,
+      "prevista": 0.55,
+      "reale": 0.407
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG 90% + gol 10% + rigori | se gioca",
+    "log_loss": 0.25617,
+    "brier": 0.06975,
+    "prevista_media": 0.0824,
+    "contro_M0_log_loss": {
+     "differenza": -0.00512,
+     "da": -0.00693,
+     "a": -0.00347,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.00039,
+     "da": -0.00063,
+     "a": -0.00018,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 28379,
+      "prevista": 0.047,
+      "reale": 0.048
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 7135,
+      "prevista": 0.14,
+      "reale": 0.132
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 2151,
+      "prevista": 0.241,
+      "reale": 0.24
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 688,
+      "prevista": 0.338,
+      "reale": 0.315
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 180,
+      "prevista": 0.435,
+      "reale": 0.406
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 53,
+      "prevista": 0.553,
+      "reale": 0.434
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG 75% + gol 25% + rigori | se gioca",
+    "log_loss": 0.25657,
+    "brier": 0.06982,
+    "prevista_media": 0.0824,
+    "contro_M0_log_loss": {
+     "differenza": -0.00472,
+     "da": -0.00653,
+     "a": -0.00306,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.00032,
+     "da": -0.00055,
+     "a": -0.00011,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 28304,
+      "prevista": 0.046,
+      "reale": 0.048
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 7180,
+      "prevista": 0.14,
+      "reale": 0.13
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 2170,
+      "prevista": 0.241,
+      "reale": 0.238
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 695,
+      "prevista": 0.338,
+      "reale": 0.319
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 183,
+      "prevista": 0.436,
+      "reale": 0.372
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 54,
+      "prevista": 0.554,
+      "reale": 0.444
+     }
+    ]
+   }
+  ],
+  "scelta": "M2 npxG + rigori | se gioca"
+ },
+ "holdout": {
+  "decisione": {
+   "log_loss": {
+    "differenza": -0.01375,
+    "da": -0.01805,
+    "a": -0.01035,
+    "significativa": true
+   },
+   "brier": {
+    "differenza": -0.00133,
+    "da": -0.00191,
+    "a": -0.00086,
+    "significativa": true
+   },
+   "calibrazione": {
+    "candidata": 0.0053,
+    "M0": 0.0232
+   },
+   "per_campionato": {
+    "Serie A": {
+     "differenza": -0.01448,
+     "da": -0.02221,
+     "a": -0.00876,
+     "significativa": true
+    },
+    "Premier League": {
+     "differenza": -0.0115,
+     "da": -0.01746,
+     "a": -0.00585,
+     "significativa": true
+    },
+    "La Liga": {
+     "differenza": -0.00999,
+     "da": -0.01141,
+     "a": -0.00808,
+     "significativa": true
+    },
+    "Bundesliga": {
+     "differenza": -0.0168,
+     "da": -0.0326,
+     "a": -0.00493,
+     "significativa": true
+    },
+    "Ligue 1": {
+     "differenza": -0.01806,
+     "da": -0.02931,
+     "a": -0.00952,
+     "significativa": true
+    }
+   },
+   "campionati_peggiorati": [],
+   "regole": {
+    "log loss migliore, intervallo tutto sotto zero": true,
+    "Brier non peggiore": true,
+    "calibrazione non peggiore": true,
+    "nessun campionato peggiorato in modo grosso e sistematico": true
+   },
+   "adottare": true
+  },
+  "previsioni": 5567,
+  "partite": 220,
+  "frequenza_reale": 0.0873,
+  "da": "2026-08-15",
+  "a": "2026-09-20",
+  "varianti": [
+   {
+    "variante": "M0 attuale (xG 65% + gol 35%)",
+    "log_loss": 0.28081,
+    "brier": 0.0748,
+    "prevista_media": 0.0644,
+    "contro_M0_log_loss": null,
+    "contro_M0_brier": null,
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 4495,
+      "prevista": 0.036,
+      "reale": 0.058
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 721,
+      "prevista": 0.137,
+      "reale": 0.164
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 245,
+      "prevista": 0.238,
+      "reale": 0.253
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 70,
+      "prevista": 0.341,
+      "reale": 0.357
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 29,
+      "prevista": 0.438,
+      "reale": 0.517
+     }
+    ]
+   },
+   {
+    "variante": "M1 npxG",
+    "log_loss": 0.27961,
+    "brier": 0.07475,
+    "prevista_media": 0.0643,
+    "contro_M0_log_loss": {
+     "differenza": -0.0012,
+     "da": -0.00208,
+     "a": -0.00024,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -5e-05,
+     "da": -0.00022,
+     "a": 0.00012,
+     "significativa": false
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 4513,
+      "prevista": 0.037,
+      "reale": 0.059
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 726,
+      "prevista": 0.136,
+      "reale": 0.16
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 238,
+      "prevista": 0.241,
+      "reale": 0.277
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 60,
+      "prevista": 0.336,
+      "reale": 0.3
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 25,
+      "prevista": 0.436,
+      "reale": 0.68
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG + rigori",
+    "log_loss": 0.28062,
+    "brier": 0.07474,
+    "prevista_media": 0.0641,
+    "contro_M0_log_loss": {
+     "differenza": -0.00019,
+     "da": -0.002,
+     "a": 0.0016,
+     "significativa": false
+    },
+    "contro_M0_brier": {
+     "differenza": -6e-05,
+     "da": -0.00034,
+     "a": 0.00023,
+     "significativa": false
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 4509,
+      "prevista": 0.036,
+      "reale": 0.058
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 710,
+      "prevista": 0.137,
+      "reale": 0.165
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 240,
+      "prevista": 0.24,
+      "reale": 0.254
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 72,
+      "prevista": 0.335,
+      "reale": 0.361
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 30,
+      "prevista": 0.44,
+      "reale": 0.533
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG 90% + gol 10% + rigori",
+    "log_loss": 0.28069,
+    "brier": 0.07475,
+    "prevista_media": 0.0642,
+    "contro_M0_log_loss": {
+     "differenza": -0.00012,
+     "da": -0.00152,
+     "a": 0.00125,
+     "significativa": false
+    },
+    "contro_M0_brier": {
+     "differenza": -5e-05,
+     "da": -0.00028,
+     "a": 0.00018,
+     "significativa": false
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 4504,
+      "prevista": 0.036,
+      "reale": 0.058
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 719,
+      "prevista": 0.137,
+      "reale": 0.166
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 238,
+      "prevista": 0.241,
+      "reale": 0.252
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 70,
+      "prevista": 0.337,
+      "reale": 0.371
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 29,
+      "prevista": 0.437,
+      "reale": 0.517
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG 75% + gol 25% + rigori",
+    "log_loss": 0.28102,
+    "brier": 0.07479,
+    "prevista_media": 0.0643,
+    "contro_M0_log_loss": {
+     "differenza": 0.00021,
+     "da": -0.00063,
+     "a": 0.001,
+     "significativa": false
+    },
+    "contro_M0_brier": {
+     "differenza": -1e-05,
+     "da": -0.00016,
+     "a": 0.00013,
+     "significativa": false
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 4494,
+      "prevista": 0.036,
+      "reale": 0.058
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 729,
+      "prevista": 0.138,
+      "reale": 0.165
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 236,
+      "prevista": 0.24,
+      "reale": 0.254
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 71,
+      "prevista": 0.337,
+      "reale": 0.352
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 30,
+      "prevista": 0.435,
+      "reale": 0.5
+     }
+    ]
+   },
+   {
+    "variante": "M0 attuale (xG 65% + gol 35%) | se gioca",
+    "log_loss": 0.26737,
+    "brier": 0.07356,
+    "prevista_media": 0.0837,
+    "contro_M0_log_loss": {
+     "differenza": -0.01344,
+     "da": -0.01607,
+     "a": -0.01043,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.00124,
+     "da": -0.00148,
+     "a": -0.00093,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 4069,
+      "prevista": 0.046,
+      "reale": 0.049
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 1008,
+      "prevista": 0.138,
+      "reale": 0.143
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 332,
+      "prevista": 0.238,
+      "reale": 0.244
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 114,
+      "prevista": 0.343,
+      "reale": 0.316
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 31,
+      "prevista": 0.44,
+      "reale": 0.484
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 13,
+      "prevista": 0.572,
+      "reale": 0.692
+     }
+    ]
+   },
+   {
+    "variante": "M1 npxG | se gioca",
+    "log_loss": 0.26665,
+    "brier": 0.07349,
+    "prevista_media": 0.0842,
+    "contro_M0_log_loss": {
+     "differenza": -0.01416,
+     "da": -0.01765,
+     "a": -0.0109,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.00131,
+     "da": -0.00159,
+     "a": -0.00099,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 4065,
+      "prevista": 0.048,
+      "reale": 0.05
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 1030,
+      "prevista": 0.137,
+      "reale": 0.137
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 336,
+      "prevista": 0.241,
+      "reale": 0.256
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 98,
+      "prevista": 0.339,
+      "reale": 0.316
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 30,
+      "prevista": 0.445,
+      "reale": 0.633
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG + rigori | se gioca",
+    "log_loss": 0.26706,
+    "brier": 0.07347,
+    "prevista_media": 0.0834,
+    "contro_M0_log_loss": {
+     "differenza": -0.01375,
+     "da": -0.01805,
+     "a": -0.01035,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.00133,
+     "da": -0.00191,
+     "a": -0.00086,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 4099,
+      "prevista": 0.046,
+      "reale": 0.05
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 971,
+      "prevista": 0.138,
+      "reale": 0.138
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 339,
+      "prevista": 0.241,
+      "reale": 0.257
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 114,
+      "prevista": 0.339,
+      "reale": 0.307
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 33,
+      "prevista": 0.445,
+      "reale": 0.485
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 11,
+      "prevista": 0.556,
+      "reale": 0.727
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG 90% + gol 10% + rigori | se gioca",
+    "log_loss": 0.2671,
+    "brier": 0.07348,
+    "prevista_media": 0.0834,
+    "contro_M0_log_loss": {
+     "differenza": -0.01371,
+     "da": -0.01768,
+     "a": -0.01048,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.00132,
+     "da": -0.00182,
+     "a": -0.00091,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 4081,
+      "prevista": 0.046,
+      "reale": 0.05
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 988,
+      "prevista": 0.138,
+      "reale": 0.135
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 341,
+      "prevista": 0.24,
+      "reale": 0.255
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 113,
+      "prevista": 0.339,
+      "reale": 0.319
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 33,
+      "prevista": 0.444,
+      "reale": 0.515
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 11,
+      "prevista": 0.556,
+      "reale": 0.636
+     }
+    ]
+   },
+   {
+    "variante": "M2 npxG 75% + gol 25% + rigori | se gioca",
+    "log_loss": 0.26738,
+    "brier": 0.07353,
+    "prevista_media": 0.0835,
+    "contro_M0_log_loss": {
+     "differenza": -0.01343,
+     "da": -0.01688,
+     "a": -0.01024,
+     "significativa": true
+    },
+    "contro_M0_brier": {
+     "differenza": -0.00127,
+     "da": -0.00164,
+     "a": -0.00091,
+     "significativa": true
+    },
+    "calibrazione": [
+     {
+      "fascia": "0%-10%",
+      "n": 4065,
+      "prevista": 0.046,
+      "reale": 0.05
+     },
+     {
+      "fascia": "10%-20%",
+      "n": 1009,
+      "prevista": 0.138,
+      "reale": 0.136
+     },
+     {
+      "fascia": "20%-30%",
+      "n": 332,
+      "prevista": 0.239,
+      "reale": 0.256
+     },
+     {
+      "fascia": "30%-40%",
+      "n": 116,
+      "prevista": 0.339,
+      "reale": 0.31
+     },
+     {
+      "fascia": "40%-50%",
+      "n": 33,
+      "prevista": 0.44,
+      "reale": 0.485
+     },
+     {
+      "fascia": "oltre 50%",
+      "n": 12,
+      "prevista": 0.552,
+      "reale": 0.667
+     }
+    ]
+   }
+  ],
+  "scelta": "M1 npxG | se gioca"
+ },
+ "generato": "2026-09-24T13:08:08.193833+00:00",
+ "partite_da_completare": 400
+}

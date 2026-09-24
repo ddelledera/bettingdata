@@ -281,3 +281,12 @@ def test_dashboard_si_apre_senza_errori():
     from streamlit.testing.v1 import AppTest
     at = AppTest.from_file("dashboard.py", default_timeout=240).run()
     assert not at.exception, [e.value for e in at.exception]
+
+
+# ---------------------------------------------------------------------------
+# Librerie: versioni fissate (un aggiornamento non deve arrivare da solo)
+# ---------------------------------------------------------------------------
+def test_versioni_delle_librerie_fissate():
+    righe = [l.split("#")[0].strip() for l in open("requirements.txt")]
+    righe = [l for l in righe if l]
+    assert righe and all("==" in l for l in righe), righe

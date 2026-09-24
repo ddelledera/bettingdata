@@ -1,5 +1,11 @@
-numpy
-scipy
-pandas
-requests
-streamlit
+# Versioni FISSATE: sono quelle con cui passano i test di regressione.
+# Senza versioni, ogni giro installerebbe l'ultima uscita e un aggiornamento
+# potrebbe rompere l'app o il giro giornaliero senza nessuna nostra modifica.
+# Per aggiornarle: cambia i numeri, carica il file e controlla che il
+# workflow "Test" resti verde.
+numpy==2.5.3
+scipy==1.18.1
+pandas==3.0.6
+requests==2.34.2
+streamlit==1.64.0
+altair==6.3.0

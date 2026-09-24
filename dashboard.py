@@ -1525,6 +1525,53 @@ def load_virtual_scorer_bets(conn):
     return df
 
 
+def render_scorer_backtest():
+    """Backtest dei marcatori (backtest_marcatori.py): perché è stato adottato
+    il modello attuale. Il report è salvato nel progetto una volta sola,
+    all'apertura dell'holdout."""
+    try:
+        with open("scorer_backtest_report.json") as f:
+            sb = json.load(f)
+    except (FileNotFoundError, ValueError):
+        return
+    ho = sb.get("holdout") or {}
+    dec = ho.get("decisione")
+    if not dec:
+        return
+    st.subheader("Marcatori: perché è stato adottato il modello attuale")
+    st.caption(
+        f"Candidata congelata prima di aprire l'holdout: npxG + rigori al probabile rigorista, "
+        f"probabilità \"se gioca\". Holdout {ho['da']} / {ho['a']}: {ho['previsioni']} previsioni "
+        f"su {ho['partite']} partite, mai usate per scegliere. Log loss: più basso è meglio.")
+    (st.success if dec["adottare"] else st.warning)(
+        ("Regola di adozione superata: il modello è nell'app." if dec["adottare"]
+         else "Regola di adozione NON superata: l'app usa ancora M0.")
+        + "\n\n" + "\n".join(f"- {'✅' if ok else '❌'} {k}" for k, ok in dec["regole"].items()))
+    righe = []
+    for v in ho["varianti"]:
+        c = v.get("contro_M0_log_loss")
+        ruolo = ("candidata" if v["variante"] == "M2 npxG + rigori | se gioca" else
+                 "baseline" if v["variante"].startswith("M0") and "|" not in v["variante"] else "diagnostica")
+        righe.append({"Variante": v["variante"], "Ruolo": ruolo, "Log loss": v["log_loss"],
+                      "Brier": v["brier"], "Prevista media": f"{v['prevista_media']:.1%}",
+                      "Contro M0": f"{c['differenza']:+.4f} ({c['da']:+.4f} / {c['a']:+.4f})" if c else "—"})
+    st.dataframe(pd.DataFrame(righe), hide_index=True, width='stretch')
+    st.caption(f"Nell'holdout hanno segnato il {ho['frequenza_reale']:.1%} dei giocatori scesi in campo. "
+               "Le varianti \"diagnostica\" non decidono niente: una migliore diventerebbe candidata "
+               "per il periodo successivo.")
+    cand = next((v for v in ho["varianti"] if v["variante"] == "M2 npxG + rigori | se gioca"), None)
+    base = next((v for v in ho["varianti"] if v["variante"].startswith("M0") and "|" not in v["variante"]), None)
+    if cand and base:
+        with st.expander("Calibrazione per fasce (holdout)"):
+            cal = []
+            for nome, v in (("modello adottato", cand), ("M0", base)):
+                for k in v["calibrazione"]:
+                    cal.append({"Modello": nome, "Fascia": k["fascia"], "Giocatori": k["n"],
+                                "Prevista": f"{k['prevista']:.0%}", "Reale": f"{k['reale']:.0%}"})
+            st.dataframe(pd.DataFrame(cal), hide_index=True, width='stretch')
+            st.caption("Nelle fasce alte i giocatori sono pochi: differenze grandi lì possono essere rumore.")
+
+
 def load_backtest():
     try:
         with open("backtest_report.json") as f:
@@ -1851,6 +1898,8 @@ with tab_analisi:
                             st.dataframe(pd.DataFrame(cov[chiave]).rename(columns={
                                 "gruppo": "Gruppo", "partite": "Partite", "con_pinnacle": "Con Pinnacle",
                                 "copertura": "Copertura"}), hide_index=True, width='stretch')
+
+            render_scorer_backtest()
 
             v2 = bt.get("v2")
             if v2 and not v3:
