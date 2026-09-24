@@ -14,12 +14,20 @@ on:
 permissions:
   contents: write
 
+# Un solo workflow alla volta tocca data.db (vale anche per le quote di
+# chiusura, closing.yml): così due salvataggi non si pestano i piedi.
+concurrency:
+  group: data-db
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
       - name: Scarica il codice del progetto
         uses: actions/checkout@v4
+        with:
+          ref: main   # la versione più recente, anche se questo giro era in coda
 
       - name: Prepara Python
         uses: actions/setup-python@v5
@@ -74,4 +82,5 @@ jobs:
           git config user.email "actions@github.com"
           git add data.db tracked_slips.json
           git diff --staged --quiet || git commit -m "Aggiornamento dati automatico"
+          git pull --rebase --autostash
           git push
