@@ -64,17 +64,25 @@ jobs:
         run: python run_model.py
 
       - name: Scarica statistiche giocatori (BSD)
+        id: bsd
         env:
           BSD_API_KEY: ${{ secrets.BSD_API_KEY }}
         run: python fetch_player_data.py
         continue-on-error: true  # prima esecuzione vera: non deve bloccare il resto se qualcosa non torna
 
       - name: Calcola le previsioni marcatori
+        id: marcatori
         run: python run_player_model.py
         continue-on-error: true  # stesso motivo
 
       - name: Controlla le schedine confermate
         run: python check_results.py
+
+      - name: Controllo di salute dei dati
+        env:
+          ESITO_BSD: ${{ steps.bsd.outcome }}
+          ESITO_MARCATORI: ${{ steps.marcatori.outcome }}
+        run: python health_check.py
 
       - name: Salva i dati aggiornati nel progetto
         run: |
@@ -84,3 +92,8 @@ jobs:
           git diff --staged --quiet || git commit -m "Aggiornamento dati automatico"
           git pull --rebase --autostash
           git push
+
+      # Dopo il salvataggio: se il controllo ha trovato ERRORI il giro diventa
+      # rosso, ma i dati raccolti sono comunque già salvati.
+      - name: Esito del controllo dei dati
+        run: python health_check.py --esito
