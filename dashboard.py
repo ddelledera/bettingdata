@@ -1185,6 +1185,26 @@ with tab_performance:
             columns={"peso_modello": "Peso del modello", "log_loss": "Log loss"}),
             hide_index=True, width='stretch')
 
+        if bt.get("contro_pinnacle"):
+            st.subheader("Strategia senza modello: bookmaker contro Pinnacle")
+            st.caption("Si gioca quando la quota di un bookmaker supera la quota 'giusta' di "
+                       "Pinnacle (senza margine) nello stesso momento, almeno della soglia "
+                       "indicata. Nessuna previsione nostra: Pinnacle fa da stima della "
+                       "probabilità vera. 'Quota massima' = la migliore tra tutti i "
+                       "bookmaker del file (include anche siti non disponibili in Italia).")
+            nomi = {"1x2_bet365": "1X2 · bet365", "1x2_quota_massima": "1X2 · quota massima",
+                    "ou25_bet365": "Under/Over 2.5 · bet365",
+                    "ou25_quota_massima": "Under/Over 2.5 · quota massima"}
+            righe = []
+            for chiave, rows in bt["contro_pinnacle"].items():
+                for r in rows:
+                    righe.append({"Strategia": nomi.get(chiave, chiave),
+                                  "Soglia": r["soglia_vantaggio"], "Scommesse": r["scommesse"],
+                                  "ROI %": round(r["roi"] * 100, 1),
+                                  "CLV medio %": round(r["clv_medio"] * 100, 1)
+                                  if r["clv_medio"] is not None else None})
+            st.dataframe(pd.DataFrame(righe), hide_index=True, width='stretch')
+
         with st.expander("Under/Over 2.5 e Goal/No Goal"):
             ou = bt["over_under_2_5"]
             if ou.get("log_loss"):
