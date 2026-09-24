@@ -79,12 +79,16 @@ def load_into_db(matches, league_name, conn):
         home_id = home_id or get_or_create_team(cur, home_name)
         away_id = away_id or get_or_create_team(cur, away_name)
 
+        # orario di inizio in UTC (es. "2026-09-27T13:00:00Z" -> "2026-09-27 13:00:00"):
+        # serve a non usare quote prese a partita iniziata e a misurare la
+        # vera quota di chiusura. Aggiornato a ogni giro: gli orari cambiano.
         cur.execute("""
             INSERT INTO matches (date, league, season, home_team_id, away_team_id,
-                                  home_goals, away_goals)
-            VALUES (?, ?, ?, ?, ?, NULL, NULL)
-            ON CONFLICT(date, home_team_id, away_team_id) DO NOTHING
-        """, (match_date, league_name, "current", home_id, away_id))
+                                  home_goals, away_goals, kickoff_utc)
+            VALUES (?, ?, ?, ?, ?, NULL, NULL, datetime(?))
+            ON CONFLICT(date, home_team_id, away_team_id) DO UPDATE SET
+                kickoff_utc = COALESCE(excluded.kickoff_utc, kickoff_utc)
+        """, (match_date, league_name, "current", home_id, away_id, m.get("utcDate")))
         inserted += 1
     conn.commit()
     if unresolved:
