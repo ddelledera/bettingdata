@@ -148,3 +148,22 @@ CREATE TABLE IF NOT EXISTS scorer_odds (
     snapshot_time TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_scorer_odds_match ON scorer_odds(match_id);
+
+-- Scommesse VIRTUALI (nessun soldo reale): quote italiane trovate sopra il
+-- prezzo giusto di Pinnacle. Servono a verificare dal vivo, per qualche
+-- settimana, se il vantaggio visto nel backtest esiste davvero con i
+-- bookmaker italiani: CLV (quota presa contro prezzo finale di Pinnacle) e
+-- rendimento sui risultati veri.
+CREATE TABLE IF NOT EXISTS virtual_bets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id INTEGER NOT NULL REFERENCES matches(id),
+    selection TEXT NOT NULL,
+    bookmaker TEXT NOT NULL,
+    odds REAL NOT NULL,
+    fair_prob REAL NOT NULL,          -- prezzo giusto Pinnacle quando l'abbiamo trovata
+    edge REAL NOT NULL,
+    found_at TEXT NOT NULL,
+    close_fair_prob REAL,             -- ultimo prezzo giusto Pinnacle prima della partita
+    close_updated_at TEXT,
+    UNIQUE (match_id, selection, bookmaker)
+);
