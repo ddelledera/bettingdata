@@ -1,0 +1,30 @@
+# Esplorazione una tantum dei dati BSD (rigori, formazioni).
+# Si avvia a mano: non modifica niente, stampa solo un riassunto nel log.
+
+name: Esplora dati BSD
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  esplora:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica il codice del progetto
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installa le librerie necessarie
+        run: pip install requests
+
+      - name: Esplora i dati BSD
+        env:
+          BSD_API_KEY: ${{ secrets.BSD_API_KEY }}
+        run: python esplora_bsd.py
