@@ -85,6 +85,28 @@ def devig(values):
     return [x / s for x in inv]
 
 
+def devig_power(values):
+    """Come devig(), ma con il metodo "potenza": toglie il margine più dagli
+    sfavoriti che dai favoriti, come fanno davvero i bookmaker. Il metodo
+    proporzionale invece lascia agli sfavoriti una probabilità troppo alta,
+    e così fa sembrare di valore scommesse che non lo sono (distorsione
+    favorito-sfavorito)."""
+    try:
+        inv = [1 / float(v) for v in values]
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    if any(math.isnan(x) for x in inv):
+        return None
+    lo, hi = 1.0, 3.0            # cerchiamo k tale che la somma di inv^k sia 1
+    for _ in range(60):
+        k = (lo + hi) / 2
+        if sum(x ** k for x in inv) > 1:
+            lo = k
+        else:
+            hi = k
+    return [x ** k for x in inv]
+
+
 def col(row, name):
     v = row.get(name)
     try:
@@ -138,6 +160,10 @@ def walk_forward(df, league):
                 "odds_b365": [col(r, "B365H"), col(r, "B365D"), col(r, "B365A")],
                 "odds_max": [col(r, "MaxH"), col(r, "MaxD"), col(r, "MaxA")],
                 "pin_pre_ou": devig([r.get("P>2.5"), r.get("P<2.5")]),
+                "pin_pre_pow": devig_power([r.get("PSH"), r.get("PSD"), r.get("PSA")]),
+                "pin_close_pow": devig_power([r.get("PSCH"), r.get("PSCD"), r.get("PSCA")]),
+                "pin_pre_ou_pow": devig_power([r.get("P>2.5"), r.get("P<2.5")]),
+                "pin_close_ou_pow": devig_power([r.get("PC>2.5"), r.get("PC<2.5")]),
                 "odds_ou_b365": [col(r, "B365>2.5"), col(r, "B365<2.5")],
                 "odds_ou_max": [col(r, "Max>2.5"), col(r, "Max<2.5")],
             })
@@ -207,22 +233,25 @@ def betting(records, prob_fn, odds_fn, outcome_fn, n_sel):
 
 
 SHARP_THRESHOLDS = [0.0, 0.02, 0.05]
+ODDS_BANDS = [(1.0, 2.5), (2.5, 5.0), (5.0, 1000.0)]
 
 
-def sharp_vs_soft(records, odds_key, fair_key, close_key, outcome_fn, n_sel):
+def sharp_vs_soft(records, odds_key, fair_key, close_key, outcome_fn, n_sel, by_odds=False):
     """Strategia SENZA modello: si gioca quando la quota di un bookmaker è più
     alta della quota "giusta" di Pinnacle (senza margine) nello stesso
     momento. È il metodo classico del value betting: il bookmaker più
     efficiente fa da stima della probabilità vera."""
     out = []
+    bands = ODDS_BANDS if by_odds else [(1.0, 1000.0)]
     for t in SHARP_THRESHOLDS:
+      for lo_o, hi_o in bands:
         n, profit, clv = 0, 0.0, []
         for r in records:
             odds, fair, close = r.get(odds_key), r.get(fair_key), r.get(close_key)
             if not odds or not fair:
                 continue
             for k in range(n_sel):
-                if not odds[k] or odds[k] * fair[k] - 1 < t:
+                if not odds[k] or odds[k] * fair[k] - 1 < t or not lo_o <= odds[k] < hi_o:
                     continue
                 n += 1
                 won = outcome_fn(r) == k
@@ -230,7 +259,10 @@ def sharp_vs_soft(records, odds_key, fair_key, close_key, outcome_fn, n_sel):
                 if close:
                     clv.append(odds[k] * close[k] - 1)
         if n:
-            out.append({"soglia_vantaggio": f"{t:+.0%}", "scommesse": n,
+            out.append({"soglia_vantaggio": f"{t:+.0%}"
+                        + (f" · quote {lo_o:g}-{hi_o:g}" if by_odds and hi_o < 1000
+                           else (f" · quote oltre {lo_o:g}" if by_odds else "")),
+                        "scommesse": n,
                         "roi": round(profit / n, 3),
                         "clv_medio": round(float(np.mean(clv)), 3) if clv else None})
     return out
@@ -294,6 +326,14 @@ def summarize(records):
                                      lambda r: 1 - r["over25"], 2),
         "ou25_quota_massima": sharp_vs_soft(records, "odds_ou_max", "pin_pre_ou", "pin_close_ou",
                                             lambda r: 1 - r["over25"], 2),
+        # stesse strategie, con il margine di Pinnacle tolto col metodo "potenza"
+        # e divise per fascia di quota: se il vantaggio sparisce, era un
+        # artefatto del calcolo e non valore vero
+        "1x2_quota_massima_potenza": sharp_vs_soft(records, "odds_max", "pin_pre_pow",
+                                                   "pin_close_pow", lambda r: r["result"], 3,
+                                                   by_odds=True),
+        "ou25_quota_massima_potenza": sharp_vs_soft(records, "odds_ou_max", "pin_pre_ou_pow",
+                                                    "pin_close_ou_pow", lambda r: 1 - r["over25"], 2),
     }
     return report
 
