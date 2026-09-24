@@ -1,0 +1,61 @@
+# Quote di chiusura di Pinnacle, prese poco prima del calcio d'inizio.
+# Gira ogni mezz'ora, ma quasi sempre si ferma dopo pochi secondi: scarica
+# qualcosa (1 richiesta OddsPapi) SOLO se una partita con scommesse virtuali
+# inizia entro 40 minuti e non ha ancora una quota vicina all'inizio.
+#
+# Non serve capire questo file. Va caricato così com'è in .github/workflows/
+
+name: Quote di chiusura Pinnacle
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"   # ai minuti 7 e 37 di ogni ora (UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Un solo workflow alla volta tocca data.db (vale anche per l'aggiornamento
+# giornaliero): così due salvataggi non si pestano i piedi.
+concurrency:
+  group: data-db
+  cancel-in-progress: false
+
+jobs:
+  closing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica il codice del progetto
+        uses: actions/checkout@v4
+        with:
+          ref: main   # la versione più recente, anche se questo giro era in coda
+
+      - name: Serve una quota di chiusura?
+        id: check
+        run: python3 check_closing.py
+
+      - name: Prepara Python
+        if: steps.check.outputs.needed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installa le librerie necessarie
+        if: steps.check.outputs.needed == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Scarica la chiusura Pinnacle (1 richiesta)
+        if: steps.check.outputs.needed == 'true'
+        env:
+          ODDSPAPI_KEY: ${{ secrets.ODDSPAPI_KEY }}
+        run: python fetch_closing.py
+
+      - name: Salva i dati aggiornati nel progetto
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          git config user.name "chiusura-automatica"
+          git config user.email "actions@github.com"
+          git add data.db
+          git diff --staged --quiet || git commit -m "Quote di chiusura Pinnacle"
+          git pull --rebase --autostash
+          git push
