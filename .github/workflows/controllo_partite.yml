@@ -1,0 +1,30 @@
+# Controllo dei giorni di partita: chiusure Pinnacle, marcatori abbinati,
+# formazioni probabili di BSD. Si avvia a mano, non modifica niente.
+
+name: Controllo giorni di partita
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  controllo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica il codice del progetto
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installa le librerie necessarie
+        run: pip install requests
+
+      - name: Controllo
+        env:
+          BSD_API_KEY: ${{ secrets.BSD_API_KEY }}
+        run: python controllo_partite.py
