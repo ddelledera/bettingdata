@@ -11,7 +11,8 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 from value_calculator import remove_bookmaker_margin, find_value_bets, combine_parlay, find_best_combination
-from markets import model_probabilities, long_label, market_of, MARKET_NAMES, scorer_key
+from markets import (model_probabilities, long_label, market_of, MARKET_NAMES, scorer_key,
+                     fair_probabilities, is_winner)
 from value_calculator import expected_value, kelly_fraction
 from github_storage import read_json_file, write_json_file
 import json
@@ -498,7 +499,7 @@ def render_leg_row(leg):
         <div class="leg-pick">{esito_label}</div>
         <div class="leg-odds">
             <div class="leg-odds-value">{leg['odds']}</div>
-            <div class="leg-odds-prob">prob. modello {leg['model_probability']:.0%}</div>
+            <div class="leg-odds-prob">prob. giusta {leg['model_probability']:.0%}</div>
             <div style="font-size:0.72rem; margin-top:2px;">{risk_badge_html(leg['odds'])}</div>
         </div>
     </div>
@@ -525,6 +526,8 @@ def render_spotlight_card(opp):
     grande e protagonista, e tutti i dettagli utili sotto."""
     avviso = ""
     ev = float(str(opp["Valore atteso (EV)"]).replace("%", "").replace("+", "")) / 100
+    pm = opp.get("Prob. modello")
+    modello_txt = f" · nostro modello {pm:.0f}%" if pm is not None and pm == pm else ""
     if ev > EV_SOSPETTO:
         avviso = ('<div style="font-size:0.78rem; color:#E28F8F; margin-top:4px;">⚠️ Scarto '
                   'molto grande dal mercato: più probabile un limite del modello (o una '
@@ -534,7 +537,7 @@ def render_spotlight_card(opp):
         <div class="spot-league">{opp['Campionato'].upper()}</div>
         <div class="spot-teams">{opp['Partita']}</div>
         <div class="spot-ev-value">{opp['Valore atteso (EV)']}</div>
-        <div class="spot-ev-label">valore atteso — {opp['Esito']} · prob. modello {opp['Nostra probabilità']:.0f}%</div>
+        <div class="spot-ev-label">valore atteso — {opp['Esito']} · prob. giusta (Pinnacle) {opp['Nostra probabilità']:.0f}%{modello_txt}</div>
         {avviso}
         <div class="spot-details">
             <span>Quota <b>{opp['Quota migliore']}</b></span>
@@ -600,56 +603,61 @@ def scorer_legs_for_match(conn_or_df, match_id, predictions_df, bookmakers):
     return legs
 
 
+MAX_ODDS = 5.0   # oltre, nel backtest, perdite pesanti anche con "valore" apparente
+
+
+def fair_for_match(conn, match_id):
+    """Probabilità giuste della partita dall'ultima quota di Pinnacle
+    (margine tolto col metodo potenza). Vuoto se Pinnacle non la quota."""
+    rows = conn.execute("""
+        SELECT selection, odds FROM (
+            SELECT selection, odds, ROW_NUMBER() OVER (
+                PARTITION BY selection ORDER BY snapshot_time DESC) AS rn
+            FROM reference_odds WHERE match_id = ? AND bookmaker = 'Pinnacle')
+        WHERE rn = 1""", (match_id,)).fetchall()
+    return fair_probabilities(dict(rows)) if rows else {}
+
+
 def compute_opportunities(conn, matches_df, min_ev, markets=None):
-    """Calcola tutte le opportunità di valore (quota migliore tra tutti i
-    bookmaker), su tutti i mercati scelti, usata dalla scheda principale."""
+    """Opportunità di valore: quote dei bookmaker italiani SOPRA il prezzo
+    giusto di Pinnacle. Il backtest (scheda Performance) ha mostrato che il
+    nostro modello, da solo, prevede peggio del mercato e scommettere sui suoi
+    'valori' perdeva; confrontare le quote con Pinnacle ha invece dato CLV
+    positivo. La probabilità del modello resta visibile solo come informazione."""
     all_opportunities = []
-    with_scorers = markets is None or "Marcatori" in markets
-    if with_scorers:
-        scorer_odds_df = load_scorer_odds(conn)
-        scorer_preds = load_upcoming_player_predictions(conn) if not scorer_odds_df.empty else None
-        italiani = [b for b in scorer_odds_df["bookmaker"].unique() if b in BOOKMAKER_ITALIA]
     for _, row in matches_df.iterrows():
+        fair = fair_for_match(conn, row["id"])
+        if not fair:
+            continue  # senza il prezzo di Pinnacle non sappiamo cosa è "giusto"
         odds_info = best_odds_for_match(conn, row["id"])
         if odds_info is None:
             continue
         best_odds, best_bookmaker, best_time = odds_info
-
-        model_probs = model_probabilities(row)
-        if markets:
-            model_probs = {k: v for k, v in model_probs.items() if market_of(k) in markets}
-        value_bets = find_value_bets(model_probs, best_odds, min_ev=min_ev)
-
-        for vb in value_bets:
+        model = model_probabilities(row)
+        for sel, p in fair.items():
+            if markets and market_of(sel) not in markets:
+                continue
+            odds = best_odds.get(sel)
+            if not odds or odds > MAX_ODDS or best_bookmaker[sel] not in BOOKMAKER_ITALIA:
+                continue
+            ev = expected_value(p, odds)
+            if ev < min_ev:
+                continue
             all_opportunities.append({
                 "Partita": f"{row['home']} vs {row['away']}",
                 "Campionato": row["league"],
                 "Data": row["date"],
-                "Esito": long_label(vb["selection"]),
-                "Nostra probabilità": round(vb["model_probability"] * 100, 1),
-                "Quota migliore": vb["odds"],
-                "Bookmaker": best_bookmaker[vb["selection"]],
-                "Aggiornata": odds_age_label(best_time[vb["selection"]]),
-                "Valore atteso (EV)": f"{vb['ev']:+.1%}",
-                "Puntata consigliata": f"{vb['kelly_stake_pct']:.1f}%",
-                "Rischio": risk_label(vb["odds"]),
-                "_ev_sort": vb["ev"],
+                "Esito": long_label(sel),
+                "Nostra probabilità": round(p * 100, 1),
+                "Prob. modello": round(model[sel] * 100, 1) if sel in model else None,
+                "Quota migliore": odds,
+                "Bookmaker": best_bookmaker[sel],
+                "Aggiornata": odds_age_label(best_time[sel]),
+                "Valore atteso (EV)": f"{ev:+.1%}",
+                "Puntata consigliata": f"{kelly_fraction(p, odds) * 100:.1f}%",
+                "Rischio": risk_label(odds),
+                "_ev_sort": ev,
             })
-        if with_scorers and scorer_preds is not None:
-            for leg in scorer_legs_for_match(scorer_odds_df, row["id"], scorer_preds, italiani):
-                if leg["ev"] < min_ev:
-                    continue
-                all_opportunities.append({
-                    "Partita": f"{row['home']} vs {row['away']}",
-                    "Campionato": row["league"], "Data": row["date"],
-                    "Esito": leg["label"],
-                    "Nostra probabilità": round(leg["model_probability"] * 100, 1),
-                    "Quota migliore": leg["odds"], "Bookmaker": leg["bookmaker"],
-                    "Aggiornata": leg.get("aggiornata", ""),
-                    "Valore atteso (EV)": f"{leg['ev']:+.1%}",
-                    "Puntata consigliata": f"{leg['kelly_stake_pct']:.1f}%",
-                    "Rischio": risk_label(leg["odds"]), "_ev_sort": leg["ev"],
-                })
     return all_opportunities
 
 
@@ -677,11 +685,19 @@ tab_opportunita, tab_schedina, tab_storico, tab_marcatori, tab_tutte, tab_perfor
 # ---------------------------------------------------------------------------
 with tab_opportunita:
     filtered_opp = competition_filter(matches_df, key="comp_opportunita")
-    markets_opp = st.multiselect("Mercato:", MARKET_NAMES, default=MARKET_NAMES,
+    mercati_verificabili = [m for m in MARKET_NAMES if m != "Marcatori"]
+    markets_opp = st.multiselect("Mercato:", mercati_verificabili, default=mercati_verificabili,
                                  key="mercati_opportunita")
+    st.caption(
+        "Come si trova il valore: quando un bookmaker italiano paga più del prezzo "
+        "'giusto' di Pinnacle (il bookmaker più efficiente, margine tolto). Nel backtest "
+        "questa strategia ha avuto quote migliori della chiusura (CLV positivo), mentre "
+        "le previsioni del nostro modello, da sole, perdevano. Solo quote fino a "
+        f"{MAX_ODDS:g}: oltre, anche il 'valore' apparente perdeva. I marcatori non sono "
+        "qui perché Pinnacle non li quota e il nostro modello non è verificato.")
 
     min_ev = st.slider("Mostra solo scommesse con valore atteso di almeno:",
-                        min_value=0, max_value=20, value=3, format="%d%%") / 100
+                        min_value=0, max_value=10, value=1, format="%d%%") / 100
 
     all_opportunities = compute_opportunities(conn, filtered_opp, min_ev, markets_opp)
 
@@ -736,14 +752,21 @@ with tab_schedina:
         with col_b:
             stake = st.number_input("Puntata (€):", min_value=1.0, value=10.0, step=1.0, key="sched_stake")
         markets_sched = st.multiselect(
-            "Mercati da usare:", MARKET_NAMES, default=MARKET_NAMES, key="mercati_schedina",
+            "Mercati da usare:", MARKET_NAMES,
+            default=[m for m in MARKET_NAMES if m != "Marcatori"], key="mercati_schedina",
             help="Al massimo una selezione per partita: esiti della stessa partita "
                  "(es. 1 e Over 2.5) sono legati tra loro e non si possono combinare "
                  "come se fossero indipendenti.")
 
         def sched_probs(row):
-            return {k: v for k, v in model_probabilities(row).items()
+            """Probabilità giuste da Pinnacle (non dal nostro modello: vedi il
+            backtest). Il 'valore' c'è quando la quota del bookmaker scelto è
+            più alta del prezzo giusto."""
+            return {k: v for k, v in fair_for_match(conn, row["id"]).items()
                     if market_of(k) in markets_sched}
+
+        def entro_quota_max(legs):
+            return [l for l in legs if l["odds"] <= MAX_ODDS]
 
         sched_scorer_odds = load_scorer_odds(conn) if "Marcatori" in markets_sched else None
         sched_scorer_preds = (load_upcoming_player_predictions(conn)
@@ -751,7 +774,9 @@ with tab_schedina:
                               else None)
 
         def sched_scorer_legs(row):
-            """Marcatori con valore di questa partita, sul bookmaker scelto."""
+            """Marcatori con valore di questa partita, sul bookmaker scelto.
+            ATTENZIONE: qui il valore è stimato dal NOSTRO modello marcatori,
+            non verificato (Pinnacle non quota i marcatori): esclusi di default."""
             if sched_scorer_preds is None:
                 return []
             return [l for l in scorer_legs_for_match(sched_scorer_odds, row["id"],
@@ -773,10 +798,10 @@ with tab_schedina:
             candidate_legs = {}
             for _, row in filtered_sched.iterrows():
                 bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker) or {}
-                for vb in find_value_bets(sched_probs(row), bm_odds, min_ev=0.0) + sched_scorer_legs(row):
+                for vb in entro_quota_max(find_value_bets(sched_probs(row), bm_odds, min_ev=0.0)) + sched_scorer_legs(row):
                     esito_label = vb.get("label") or long_label(vb["selection"])
                     label = (f"{row['home']} vs {row['away']} — {esito_label} @ {vb['odds']} "
-                             f"(nostra prob. {vb['model_probability']:.0%}, EV {vb['ev']:+.1%})")
+                             f"(prob. giusta {vb['model_probability']:.0%}, EV {vb['ev']:+.1%})")
                     vb["match_id"] = row["id"]
                     vb["match_label"] = f"{row['home']} vs {row['away']}"
                     vb["match_date"] = row["date"]
@@ -831,7 +856,7 @@ with tab_schedina:
                     bm_odds = odds_by_bookmaker_for_match(conn, row["id"], selected_bookmaker) or {}
                     # solo selezioni con valore (EV >= 0): la schedina deve essere
                     # conveniente, non solo "probabile"
-                    candidates = (find_value_bets(sched_probs(row), bm_odds, min_ev=0.0)
+                    candidates = (entro_quota_max(find_value_bets(sched_probs(row), bm_odds, min_ev=0.0))
                                   + sched_scorer_legs(row))
                     candidates = [c for c in candidates
                                   if risk_order[risk_label(c["odds"])] <= max_risk_level]
@@ -1115,6 +1140,59 @@ with tab_tutte:
 # SCHEDA 6: Performance del modello (risultati del backtest settimanale)
 # ---------------------------------------------------------------------------
 with tab_performance:
+    # --- Prova dal vivo: scommesse virtuali -------------------------------
+    st.subheader("Prova dal vivo: scommesse virtuali")
+    st.caption(
+        "Ogni giorno registriamo, senza giocare soldi, le quote dei bookmaker italiani "
+        "che superano il prezzo giusto di Pinnacle (quote fino a 5). "
+        "CLV = quanto la quota presa batteva l'ultimo prezzo di Pinnacle prima della "
+        "partita: è l'indicatore che si stabilizza prima (bastano poche centinaia di "
+        "scommesse), mentre il rendimento sui risultati richiede molto più tempo.")
+    try:
+        vb = pd.read_sql_query("""
+            SELECT v.*, m.home_goals, m.away_goals, m.date, m.league,
+                   h.name AS home, a.name AS away
+            FROM virtual_bets v JOIN matches m ON m.id = v.match_id
+            JOIN teams h ON h.id = m.home_team_id JOIN teams a ON a.id = m.away_team_id
+        """, conn)
+    except Exception:
+        vb = pd.DataFrame()
+    if vb.empty:
+        st.info("Nessuna scommessa virtuale ancora registrata: la raccolta parte dal "
+                "prossimo aggiornamento delle quote.")
+    else:
+        vb["clv"] = vb["odds"] * vb["close_fair_prob"] - 1
+        chiuse = vb[vb["home_goals"].notna()].copy()
+        if not chiuse.empty:
+            chiuse["vinta"] = [is_winner(s_, int(h), int(a)) for s_, h, a in
+                               zip(chiuse["selection"], chiuse["home_goals"], chiuse["away_goals"])]
+            chiuse["profitto"] = [o - 1 if w else -1 for o, w in zip(chiuse["odds"], chiuse["vinta"])]
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Scommesse virtuali", len(vb))
+        m2.metric("Concluse", len(chiuse))
+        m3.metric("CLV medio", f"{vb['clv'].mean():+.1%}",
+                  help="Positivo = le quote trovate battevano il prezzo finale di Pinnacle.")
+        m4.metric("Rendimento (concluse)",
+                  f"{chiuse['profitto'].mean():+.1%}" if not chiuse.empty else "—",
+                  help="Profitto medio per unità puntata. Con poche scommesse è molto "
+                       "influenzato dalla fortuna: guarda soprattutto il CLV.")
+        per_book = vb.groupby("bookmaker").agg(scommesse=("id", "count"),
+                                               clv_medio=("clv", "mean")).reset_index()
+        per_book["clv_medio"] = (per_book["clv_medio"] * 100).round(1)
+        st.dataframe(per_book.rename(columns={"bookmaker": "Bookmaker", "scommesse": "Scommesse",
+                                              "clv_medio": "CLV medio %"}),
+                     hide_index=True, width='stretch')
+        with st.expander("Ultime scommesse virtuali"):
+            ultime = vb.sort_values("found_at", ascending=False).head(50)
+            st.dataframe(pd.DataFrame({
+                "Data": ultime["date"], "Partita": ultime["home"] + " - " + ultime["away"],
+                "Esito": [long_label(x) for x in ultime["selection"]],
+                "Bookmaker": ultime["bookmaker"], "Quota": ultime["odds"],
+                "Vantaggio %": (ultime["edge"] * 100).round(1),
+                "CLV %": (ultime["clv"] * 100).round(1),
+            }), hide_index=True, width='stretch')
+    st.divider()
+
     try:
         with open("backtest_report.json") as f:
             bt = json.load(f)
