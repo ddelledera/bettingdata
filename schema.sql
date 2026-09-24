@@ -198,3 +198,23 @@ CREATE TABLE IF NOT EXISTS health_checks (
     level TEXT NOT NULL,              -- "ERRORE", "AVVISO" oppure "OK"
     message TEXT NOT NULL
 );
+
+-- PROVA DAL VIVO DEI MARCATORI (record_scorer_bets.py): ogni quota marcatore
+-- di un bookmaker italiano sopra la nostra probabilità "se gioca", registrata
+-- come se l'avessimo giocata. Esito: segna / non segna / rimborsata (non ha giocato).
+CREATE TABLE IF NOT EXISTS virtual_scorer_bets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id INTEGER NOT NULL REFERENCES matches(id),
+    player_id INTEGER NOT NULL REFERENCES players(id),
+    bookmaker TEXT NOT NULL,
+    odds REAL NOT NULL,                -- quota trovata
+    model_prob REAL NOT NULL,          -- nostra probabilità "se gioca" in quel momento
+    edge REAL NOT NULL,                -- odds * model_prob - 1
+    expected_minutes REAL,             -- per capire dopo dove sbaglia il modello
+    starting_probability REAL,
+    found_at TEXT NOT NULL,
+    close_odds REAL,                   -- ultima quota vista prima dell'inizio
+    close_updated_at TEXT,
+    result TEXT,                       -- 'segna', 'non segna', 'rimborsata' (NULL = in attesa)
+    UNIQUE (match_id, player_id, bookmaker)
+);

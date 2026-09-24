@@ -1501,6 +1501,30 @@ def load_virtual_bets(conn):
     return vb, chiuse
 
 
+def load_virtual_scorer_bets(conn):
+    """Prova dal vivo dei marcatori (record_scorer_bets.py)."""
+    ko = "m.kickoff_utc" if has_kickoff(conn) else "NULL"
+    try:
+        df = pd.read_sql_query(f"""
+            SELECT v.*, pl.name AS player, m.date,
+                   (m.home_goals IS NOT NULL
+                    OR ({ko} IS NOT NULL AND {ko} <= datetime('now'))
+                    OR ({ko} IS NULL AND m.date < date('now'))) AS iniziata
+            FROM virtual_scorer_bets v JOIN players pl ON pl.id = v.player_id
+            JOIN matches m ON m.id = v.match_id""", conn)
+    except Exception:
+        return pd.DataFrame()
+    if df.empty:
+        return df
+    df["iniziata"] = df["iniziata"].astype(bool)
+    df["movimento"] = df["odds"] / df["close_odds"] - 1       # >0: la quota poi è scesa
+    df["profitto"] = [o - 1 if r == "segna" else (-1 if r == "non segna" else None)
+                      for o, r in zip(df["odds"], df["result"])]
+    df["tipo"] = ["titolare fisso" if (sp or 0) >= 0.6 else "a rotazione"
+                  for sp in df["starting_probability"]]
+    return df
+
+
 def load_backtest():
     try:
         with open("backtest_report.json") as f:
@@ -1618,81 +1642,131 @@ with tab_analisi:
 
     # --- Prova dal vivo ---------------------------------------------------
     with sub_live:
+      sub_live_1x2, sub_live_marc = st.tabs(["Quote contro Pinnacle", "Marcatori (in prova)"])
+      with sub_live_marc:
+        vs = load_virtual_scorer_bets(conn)
         st.caption(
-            "Ogni giorno registriamo, senza giocare soldi, le quote dei bookmaker italiani "
-            "che superano il prezzo giusto di Pinnacle (quote fino a 5). CLV = quanto la "
-            "quota presa batteva il prezzo di Pinnacle poco prima della partita: si "
-            "stabilizza con poche centinaia di scommesse, il rendimento ne richiede molte di più.")
-        if vb.empty:
-            st.info("Nessuna scommessa virtuale ancora registrata: la raccolta parte dal "
-                    "prossimo aggiornamento delle quote.")
+            "Ogni quota marcatore di Eurobet o bet365 sopra la nostra probabilità \"se gioca\" "
+            "viene registrata come se l'avessimo giocata. Qui non c'è Pinnacle: misuriamo il "
+            "rendimento (rimborsata se il giocatore non entra) e il movimento della quota fino "
+            "al mattino della partita (positivo = la quota poi è scesa, il mercato è venuto "
+            "verso di noi).")
+        if vs.empty:
+            st.info("Nessuna scommessa virtuale sui marcatori ancora registrata: i bookmaker "
+                    "aprono i marcatori 1-3 giorni prima delle partite.")
         else:
-            fin = vb[vb["definitiva"]]
-            cls, testo = semaforo(len(fin))
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Scommesse virtuali", len(vb),
-                      help="Tutte quelle registrate, anche su partite non ancora iniziate.")
-            m2.metric("Con chiusura definitiva", len(fin),
-                      help="Partite iniziate: il prezzo di chiusura di Pinnacle non cambia più.")
-            m3.metric("CLV medio", f"{fin['clv'].mean():+.1%}" if len(fin) else "—",
-                      help="Solo sulle chiusure definitive. Positivo = le quote trovate "
-                           "battevano il prezzo finale di Pinnacle.")
-            m4.metric("Rendimento (concluse)",
-                      f"{chiuse['profitto'].mean():+.1%}" if not chiuse.empty else "—",
-                      help="Profitto medio per unità puntata. Con poche scommesse dipende "
-                           "molto dalla fortuna: guarda soprattutto il CLV.")
-            render_html(f'<span class="light-badge {cls}">{testo}: {len(fin)} scommesse con '
-                        f'chiusura definitiva (ne servono almeno 200 per un giudizio)</span>')
-            if len(fin):
-                st.caption(f"CLV: {ci_text(bootstrap_ci(fin['clv']))}.")
-            else:
-                st.caption("Il CLV si misura quando le partite iniziano: finché una partita "
-                           "non comincia, la chiusura di Pinnacle può ancora cambiare.")
-            if not chiuse.empty:
-                st.caption(f"Rendimento: {ci_text(bootstrap_ci(chiuse['profitto']))}.")
-            if has_kickoff(conn):
-                ko = pd.read_sql_query("SELECT id AS match_id, kickoff_utc FROM matches "
-                                       "WHERE kickoff_utc IS NOT NULL", conn)
-                vk = vb.merge(ko, on="match_id", how="inner")
-                vk = vk[vk["home_goals"].notna() | (pd.to_datetime(vk["kickoff_utc"], utc=True)
-                                                     <= pd.Timestamp.now(tz="UTC"))]
-                if not vk.empty:
-                    anticipo = ((pd.to_datetime(vk["kickoff_utc"], utc=True)
-                                 - pd.to_datetime(vk["close_updated_at"], utc=True, format="ISO8601"))
-                                .dt.total_seconds() / 60)
-                    prima = anticipo[anticipo >= 0]
-                    dopo = int((anticipo < 0).sum())
-                    testo_ch = (f"Chiusura delle scommesse già iniziate: presa in mediana "
-                                f"{prima.median():.0f} minuti prima del calcio d'inizio; entro "
-                                f"un'ora per il {(prima <= 60).mean():.0%}. Più è vicina "
-                                f"all'inizio, più il CLV è affidabile." if len(prima) else "")
-                    if dopo:
-                        testo_ch += (f" {dopo} scommesse hanno una chiusura presa dopo l'inizio "
-                                     f"(registrate prima della correzione): il loro CLV è meno affidabile.")
-                    st.caption(testo_ch.strip())
-
+            concl = vs[vs["result"].isin(["segna", "non segna"])]
+            fin = vs[vs["iniziata"]]
+            cls, testo = semaforo(len(concl))
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Registrate", len(vs))
+            c2.metric("Concluse", len(concl),
+                      help=f"Più {int((vs['result'] == 'rimborsata').sum())} rimborsate "
+                           "(giocatore non sceso in campo).")
+            c3.metric("Rendimento", f"{concl['profitto'].mean():+.1%}" if len(concl) else "—")
+            c4.metric("Movimento quota", f"{fin['movimento'].mean():+.1%}" if len(fin) else "—",
+                      help="Media di quota presa / ultima quota prima della partita - 1.")
+            render_html(f'<span class="light-badge {cls}">{testo}: {len(concl)} scommesse concluse '
+                        f'(ne servono almeno 200 per un giudizio)</span>')
+            if len(concl):
+                st.caption(f"Rendimento: {ci_text(bootstrap_ci(concl['profitto']))}. Probabilità "
+                           f"media del modello {concl['model_prob'].mean():.0%}, segnano davvero "
+                           f"{(concl['result'] == 'segna').mean():.0%}.")
             if len(fin):
                 g1, g2 = st.columns(2)
                 with g1:
-                    mini_list("CLV per bookmaker",
-                              fin.groupby("bookmaker").agg(clv=("clv", "mean"), n=("id", "count"))
+                    mini_list("Movimento quota per bookmaker",
+                              fin.groupby("bookmaker").agg(clv=("movimento", "mean"), n=("id", "count"))
                               .reset_index(), "bookmaker")
                 with g2:
-                    mini_list("CLV per mercato",
-                              fin.groupby("mercato").agg(clv=("clv", "mean"), n=("id", "count"))
-                              .reset_index(), "mercato")
+                    mini_list("Movimento quota per tipo di giocatore",
+                              fin.groupby("tipo").agg(clv=("movimento", "mean"), n=("id", "count"))
+                              .reset_index(), "tipo")
                 st.write("")
-            with st.expander("Ultime scommesse virtuali"):
-                ultime = vb.sort_values("found_at", ascending=False).head(50)
+            with st.expander("Ultime scommesse virtuali sui marcatori"):
+                ult = vs.sort_values("found_at", ascending=False).head(50)
                 st.dataframe(pd.DataFrame({
-                    "Data": ultime["date"], "Partita": ultime["home"] + " - " + ultime["away"],
-                    "Esito": [long_label(x) for x in ultime["selection"]],
-                    "Bookmaker": ultime["bookmaker"], "Quota": ultime["odds"],
-                    "Vantaggio %": (ultime["edge"] * 100).round(1),
-                    "CLV %": [round(c * 100, 1) if d else None
-                              for c, d in zip(ultime["clv"], ultime["definitiva"])],
+                    "Data": ult["date"], "Giocatore": ult["player"], "Bookmaker": ult["bookmaker"],
+                    "Quota": ult["odds"], "Nostra prob.": (ult["model_prob"] * 100).round(0),
+                    "Vantaggio %": (ult["edge"] * 100).round(1),
+                    "Ultima quota": ult["close_odds"], "Esito": ult["result"].fillna("in attesa"),
                 }), hide_index=True, width='stretch')
-                st.caption("CLV vuoto = partita non ancora iniziata.")
+      with sub_live_1x2:
+          st.caption(
+              "Ogni giorno registriamo, senza giocare soldi, le quote dei bookmaker italiani "
+              "che superano il prezzo giusto di Pinnacle (quote fino a 5). CLV = quanto la "
+              "quota presa batteva il prezzo di Pinnacle poco prima della partita: si "
+              "stabilizza con poche centinaia di scommesse, il rendimento ne richiede molte di più.")
+          if vb.empty:
+              st.info("Nessuna scommessa virtuale ancora registrata: la raccolta parte dal "
+                      "prossimo aggiornamento delle quote.")
+          else:
+              fin = vb[vb["definitiva"]]
+              cls, testo = semaforo(len(fin))
+              m1, m2, m3, m4 = st.columns(4)
+              m1.metric("Scommesse virtuali", len(vb),
+                        help="Tutte quelle registrate, anche su partite non ancora iniziate.")
+              m2.metric("Con chiusura definitiva", len(fin),
+                        help="Partite iniziate: il prezzo di chiusura di Pinnacle non cambia più.")
+              m3.metric("CLV medio", f"{fin['clv'].mean():+.1%}" if len(fin) else "—",
+                        help="Solo sulle chiusure definitive. Positivo = le quote trovate "
+                             "battevano il prezzo finale di Pinnacle.")
+              m4.metric("Rendimento (concluse)",
+                        f"{chiuse['profitto'].mean():+.1%}" if not chiuse.empty else "—",
+                        help="Profitto medio per unità puntata. Con poche scommesse dipende "
+                             "molto dalla fortuna: guarda soprattutto il CLV.")
+              render_html(f'<span class="light-badge {cls}">{testo}: {len(fin)} scommesse con '
+                          f'chiusura definitiva (ne servono almeno 200 per un giudizio)</span>')
+              if len(fin):
+                  st.caption(f"CLV: {ci_text(bootstrap_ci(fin['clv']))}.")
+              else:
+                  st.caption("Il CLV si misura quando le partite iniziano: finché una partita "
+                             "non comincia, la chiusura di Pinnacle può ancora cambiare.")
+              if not chiuse.empty:
+                  st.caption(f"Rendimento: {ci_text(bootstrap_ci(chiuse['profitto']))}.")
+              if has_kickoff(conn):
+                  ko = pd.read_sql_query("SELECT id AS match_id, kickoff_utc FROM matches "
+                                         "WHERE kickoff_utc IS NOT NULL", conn)
+                  vk = vb.merge(ko, on="match_id", how="inner")
+                  vk = vk[vk["home_goals"].notna() | (pd.to_datetime(vk["kickoff_utc"], utc=True)
+                                                       <= pd.Timestamp.now(tz="UTC"))]
+                  if not vk.empty:
+                      anticipo = ((pd.to_datetime(vk["kickoff_utc"], utc=True)
+                                   - pd.to_datetime(vk["close_updated_at"], utc=True, format="ISO8601"))
+                                  .dt.total_seconds() / 60)
+                      prima = anticipo[anticipo >= 0]
+                      dopo = int((anticipo < 0).sum())
+                      testo_ch = (f"Chiusura delle scommesse già iniziate: presa in mediana "
+                                  f"{prima.median():.0f} minuti prima del calcio d'inizio; entro "
+                                  f"un'ora per il {(prima <= 60).mean():.0%}. Più è vicina "
+                                  f"all'inizio, più il CLV è affidabile." if len(prima) else "")
+                      if dopo:
+                          testo_ch += (f" {dopo} scommesse hanno una chiusura presa dopo l'inizio "
+                                       f"(registrate prima della correzione): il loro CLV è meno affidabile.")
+                      st.caption(testo_ch.strip())
+
+              if len(fin):
+                  g1, g2 = st.columns(2)
+                  with g1:
+                      mini_list("CLV per bookmaker",
+                                fin.groupby("bookmaker").agg(clv=("clv", "mean"), n=("id", "count"))
+                                .reset_index(), "bookmaker")
+                  with g2:
+                      mini_list("CLV per mercato",
+                                fin.groupby("mercato").agg(clv=("clv", "mean"), n=("id", "count"))
+                                .reset_index(), "mercato")
+                  st.write("")
+              with st.expander("Ultime scommesse virtuali"):
+                  ultime = vb.sort_values("found_at", ascending=False).head(50)
+                  st.dataframe(pd.DataFrame({
+                      "Data": ultime["date"], "Partita": ultime["home"] + " - " + ultime["away"],
+                      "Esito": [long_label(x) for x in ultime["selection"]],
+                      "Bookmaker": ultime["bookmaker"], "Quota": ultime["odds"],
+                      "Vantaggio %": (ultime["edge"] * 100).round(1),
+                      "CLV %": [round(c * 100, 1) if d else None
+                                for c, d in zip(ultime["clv"], ultime["definitiva"])],
+                  }), hide_index=True, width='stretch')
+                  st.caption("CLV vuoto = partita non ancora iniziata.")
 
     def bet_table(rows):
         df = pd.DataFrame(rows)
