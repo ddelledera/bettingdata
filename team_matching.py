@@ -121,8 +121,9 @@ def resolve_team(cur, name, league=None):
 def repoint_match(cur, old_id, new_id):
     """Sposta tutto ciò che è collegato a una partita su un'altra."""
     for table in ("odds_snapshots", "reference_odds", "scorer_odds",
-                  "player_predictions", "bsd_events"):
-        cur.execute(f"UPDATE {table} SET match_id = ? WHERE match_id = ?", (new_id, old_id))
+                  "player_predictions", "bsd_events", "virtual_bets"):
+        cur.execute(f"UPDATE OR IGNORE {table} SET match_id = ? WHERE match_id = ?",
+                    (new_id, old_id))
     cur.execute("UPDATE OR IGNORE model_predictions SET match_id = ? WHERE match_id = ?",
                 (new_id, old_id))
     cur.execute("DELETE FROM model_predictions WHERE match_id = ?", (old_id,))
