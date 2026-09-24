@@ -1,0 +1,318 @@
+{
+ "partite_valutate": 3710,
+ "1x2": {
+  "log_loss": {
+   "modello": 0.984,
+   "mercato_media": 0.9641,
+   "pinnacle_chiusura": 0.9621
+  },
+  "brier": {
+   "modello": 0.586,
+   "pinnacle_chiusura": 0.5719
+  },
+  "calibrazione": [
+   {
+    "fascia": "0%-10%",
+    "n": 281,
+    "prevista": 0.076,
+    "reale": 0.068
+   },
+   {
+    "fascia": "10%-20%",
+    "n": 1510,
+    "prevista": 0.16,
+    "reale": 0.151
+   },
+   {
+    "fascia": "20%-30%",
+    "n": 4326,
+    "prevista": 0.253,
+    "reale": 0.262
+   },
+   {
+    "fascia": "30%-40%",
+    "n": 1908,
+    "prevista": 0.344,
+    "reale": 0.324
+   },
+   {
+    "fascia": "40%-50%",
+    "n": 1276,
+    "prevista": 0.448,
+    "reale": 0.453
+   },
+   {
+    "fascia": "50%-60%",
+    "n": 920,
+    "prevista": 0.545,
+    "reale": 0.52
+   },
+   {
+    "fascia": "60%-70%",
+    "n": 580,
+    "prevista": 0.644,
+    "reale": 0.683
+   },
+   {
+    "fascia": "70%-80%",
+    "n": 258,
+    "prevista": 0.744,
+    "reale": 0.748
+   },
+   {
+    "fascia": "80%-90%",
+    "n": 68,
+    "prevista": 0.837,
+    "reale": 0.912
+   }
+  ],
+  "miscela": [
+   {
+    "peso_modello": 0.0,
+    "log_loss": 0.9638
+   },
+   {
+    "peso_modello": 0.2,
+    "log_loss": 0.9655
+   },
+   {
+    "peso_modello": 0.4,
+    "log_loss": 0.9684
+   },
+   {
+    "peso_modello": 0.5,
+    "log_loss": 0.9703
+   },
+   {
+    "peso_modello": 0.6,
+    "log_loss": 0.9724
+   },
+   {
+    "peso_modello": 0.8,
+    "log_loss": 0.9776
+   },
+   {
+    "peso_modello": 1.0,
+    "log_loss": 0.984
+   }
+  ],
+  "peso_modello_migliore": 0.0,
+  "scommesse_modello": [
+   {
+    "fascia_ev": "+0% / +5%",
+    "scommesse": 1130,
+    "vinte": 0.328,
+    "roi": -0.063,
+    "clv_medio": -0.05
+   },
+   {
+    "fascia_ev": "+5% / +10%",
+    "scommesse": 780,
+    "vinte": 0.296,
+    "roi": -0.119,
+    "clv_medio": -0.053
+   },
+   {
+    "fascia_ev": "+10% / +25%",
+    "scommesse": 1205,
+    "vinte": 0.256,
+    "roi": -0.138,
+    "clv_medio": -0.069
+   },
+   {
+    "fascia_ev": "oltre +25%",
+    "scommesse": 714,
+    "vinte": 0.195,
+    "roi": -0.131,
+    "clv_medio": -0.069
+   }
+  ],
+  "totale_modello": {
+   "scommesse": 3829,
+   "roi": -0.11
+  },
+  "scommesse_miscela": [
+   {
+    "fascia_ev": "+0% / +5%",
+    "scommesse": 45,
+    "vinte": 0.156,
+    "roi": 0.291,
+    "clv_medio": -0.098
+   },
+   {
+    "fascia_ev": "+5% / +10%",
+    "scommesse": 17,
+    "vinte": 0.059,
+    "roi": -0.902,
+    "clv_medio": -0.046
+   },
+   {
+    "fascia_ev": "+10% / +25%",
+    "scommesse": 1,
+    "vinte": 0.0,
+    "roi": -1.0,
+    "clv_medio": -0.054
+   }
+  ],
+  "totale_miscela": {
+   "scommesse": 63,
+   "roi": -0.051
+  }
+ },
+ "over_under_2_5": {
+  "log_loss": {
+   "modello": 0.6813,
+   "pinnacle_chiusura": 0.6706
+  },
+  "calibrazione": [
+   {
+    "fascia": "20%-30%",
+    "n": 111,
+    "prevista": 0.27,
+    "reale": 0.36
+   },
+   {
+    "fascia": "30%-40%",
+    "n": 503,
+    "prevista": 0.36,
+    "reale": 0.447
+   },
+   {
+    "fascia": "40%-50%",
+    "n": 961,
+    "prevista": 0.454,
+    "reale": 0.484
+   },
+   {
+    "fascia": "50%-60%",
+    "n": 1243,
+    "prevista": 0.55,
+    "reale": 0.561
+   },
+   {
+    "fascia": "60%-70%",
+    "n": 711,
+    "prevista": 0.641,
+    "reale": 0.609
+   },
+   {
+    "fascia": "70%-80%",
+    "n": 152,
+    "prevista": 0.738,
+    "reale": 0.73
+   },
+   {
+    "fascia": "80%-90%",
+    "n": 25,
+    "prevista": 0.826,
+    "reale": 0.8
+   }
+  ],
+  "scommesse_modello": [
+   {
+    "fascia_ev": "+0% / +5%",
+    "scommesse": 900,
+    "vinte": 0.516,
+    "roi": -0.031,
+    "clv_medio": -0.05
+   },
+   {
+    "fascia_ev": "+5% / +10%",
+    "scommesse": 601,
+    "vinte": 0.478,
+    "roi": -0.077,
+    "clv_medio": -0.05
+   },
+   {
+    "fascia_ev": "+10% / +25%",
+    "scommesse": 750,
+    "vinte": 0.443,
+    "roi": -0.103,
+    "clv_medio": -0.055
+   },
+   {
+    "fascia_ev": "oltre +25%",
+    "scommesse": 182,
+    "vinte": 0.467,
+    "roi": 0.1,
+    "clv_medio": -0.043
+   }
+  ],
+  "totale_modello": {
+   "scommesse": 2433,
+   "roi": -0.055
+  }
+ },
+ "goal_no_goal": {
+  "calibrazione": [
+   {
+    "fascia": "20%-30%",
+    "n": 21,
+    "prevista": 0.275,
+    "reale": 0.429
+   },
+   {
+    "fascia": "30%-40%",
+    "n": 292,
+    "prevista": 0.369,
+    "reale": 0.452
+   },
+   {
+    "fascia": "40%-50%",
+    "n": 1128,
+    "prevista": 0.455,
+    "reale": 0.52
+   },
+   {
+    "fascia": "50%-60%",
+    "n": 1595,
+    "prevista": 0.548,
+    "reale": 0.559
+   },
+   {
+    "fascia": "60%-70%",
+    "n": 640,
+    "prevista": 0.635,
+    "reale": 0.606
+   },
+   {
+    "fascia": "70%-80%",
+    "n": 33,
+    "prevista": 0.724,
+    "reale": 0.788
+   }
+  ]
+ },
+ "per_campionato_log_loss": {
+  "Serie A": {
+   "modello": 0.9873,
+   "mercato_media": 0.9643,
+   "pinnacle_chiusura": 0.9639
+  },
+  "Premier League": {
+   "modello": 0.9935,
+   "mercato_media": 0.9783,
+   "pinnacle_chiusura": 0.9753
+  },
+  "La Liga": {
+   "modello": 0.9667,
+   "mercato_media": 0.9506,
+   "pinnacle_chiusura": 0.9474
+  },
+  "Bundesliga": {
+   "modello": 0.9948,
+   "mercato_media": 0.9678,
+   "pinnacle_chiusura": 0.9653
+  },
+  "Ligue 1": {
+   "modello": 0.9786,
+   "mercato_media": 0.9585,
+   "pinnacle_chiusura": 0.9579
+  }
+ },
+ "periodo": {
+  "da": "2024-08-15",
+  "a": "2026-09-20"
+ },
+ "generato": "2026-09-24T06:46:05.685480+00:00"
+}
