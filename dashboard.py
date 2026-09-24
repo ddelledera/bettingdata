@@ -436,6 +436,15 @@ def best_scorer_odds(scorer_odds_df, bookmakers):
                                "snapshot_time": "best_time"}))
 
 
+def render_html(html):
+    """Mostra un blocco HTML. Toglie rientri e righe vuote prima di passarlo a
+    st.markdown: per il Markdown una riga vuota seguita da righe rientrate di 4+
+    spazi è un blocco di codice, e l'HTML comparirebbe come testo (succedeva
+    quando un pezzo opzionale, come l'avviso, era vuoto)."""
+    st.markdown("\n".join(line.strip() for line in html.splitlines() if line.strip()),
+                unsafe_allow_html=True)
+
+
 def render_scorer_card(row):
     """Disegna una scheda per la probabilità di un giocatore di segnare,
     nello stesso stile delle schede 'in evidenza' delle opportunità."""
@@ -450,7 +459,7 @@ def render_scorer_card(row):
                       f'<span>Quota <b>{row["best_odds"]}</b> · {row["best_bookmaker"]} · '
                       f'{odds_age_label(row["best_time"])}</span>'
                       f'<span style="color:{colore}; font-weight:600;">EV {ev:+.1%}</span></div>')
-    st.markdown(f"""
+    render_html(f"""
     <div class="spot-card">
         <div class="spot-league">{row['league'].upper()}</div>
         <div class="spot-teams">{row['player']}<br><span style="font-size:0.85rem; font-weight:400; color:#8FBFA3;">{row['team']} vs {avversario}</span></div>
@@ -463,7 +472,7 @@ def render_scorer_card(row):
         </div>
         {quota_html}
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
 
 def competition_filter(matches_df, key):
@@ -491,7 +500,7 @@ def render_leg_row(leg):
     Il livello di rischio è indicato sia dal colore del bordo sia da
     un'etichetta di testo, per chi non riesce a distinguere bene i colori."""
     esito_label = leg.get("label") or long_label(leg["selection"])
-    st.markdown(f"""
+    render_html(f"""
     <div class="leg-row {risk_css_class(leg['odds'])}">
         <div class="leg-match">
             <div class="leg-teams">{leg['match_label']}</div>
@@ -504,7 +513,7 @@ def render_leg_row(leg):
             <div style="font-size:0.72rem; margin-top:2px;">{risk_badge_html(leg['odds'])}</div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
 
 RISK_COLORS = {"leg-basso": "#5EB78A", "leg-medio": "#D4A017", "leg-alto": "#E28F8F"}
@@ -533,7 +542,7 @@ def render_spotlight_card(opp):
         avviso = ('<div style="font-size:0.78rem; color:#E28F8F; margin-top:4px;">⚠️ Scarto '
                   'molto grande dal mercato: più probabile un limite del modello (o una '
                   'quota non aggiornata) che un vero affare. Verifica prima di giocare.</div>')
-    st.markdown(f"""
+    render_html(f"""
     <div class="spot-card">
         <div class="spot-league">{opp['Campionato'].upper()}</div>
         <div class="spot-teams">{opp['Partita']}</div>
@@ -549,25 +558,25 @@ def render_spotlight_card(opp):
             <span>Kelly teorico <b>{opp['Puntata consigliata']}</b></span>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
 
 def render_slip_card(slip):
     """Disegna una scheda per una voce dello storico: in attesa, vinta o persa."""
     legs_desc = ", ".join(l["match_label"] for l in slip["legs"])
     if slip["status"] == "pending":
-        st.markdown(f"""
+        render_html(f"""
         <div class="slip-card slip-pending">
             <div class="slip-header"><span>🕒 {slip['stake']}€ @ {slip['combined_odds']} · {slip['bookmaker']}</span></div>
             <div class="slip-meta">{legs_desc}</div>
         </div>
-        """, unsafe_allow_html=True)
+        """)
     else:
         esito = slip["result_summary"]
         won = slip["status"] == "won"
         icona = "✅" if won else "❌"
         profit_class = "slip-profit-won" if won else "slip-profit-lost"
-        st.markdown(f"""
+        render_html(f"""
         <div class="slip-card {'slip-won' if won else 'slip-lost'}">
             <div class="slip-header">
                 <span>{icona} {slip['stake']}€ @ {slip['combined_odds']} · {slip['bookmaker']}</span>
@@ -575,7 +584,7 @@ def render_slip_card(slip):
             </div>
             <div class="slip-meta">{legs_desc}</div>
         </div>
-        """, unsafe_allow_html=True)
+        """)
         with st.expander("Dettaglio"):
             for leg in esito["legs"]:
                 check = "✔️" if leg["won"] else "✖️"
