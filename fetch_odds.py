@@ -81,14 +81,40 @@ NOISE = {"fc", "ac", "as", "ss", "ssc", "cf", "calcio", "afc", "sc", "sv",
          "club", "de", "1909", "1907", "1913", "1927", "04", "05", "1846"}
 
 
-def api_get(path, **params):
+API_CALLS = []   # richieste fatte in questa esecuzione, salvate poi in api_calls
+
+
+def api_get(path, purpose="giornaliero", **params):
     if not API_KEY:
         raise RuntimeError("Manca la chiave API (ODDSPAPI_KEY) nei secrets.")
     params["apiKey"] = API_KEY
+    API_CALLS.append((purpose, datetime.now(timezone.utc).isoformat()))
     r = requests.get(f"{BASE_URL}{path}", params=params, timeout=60)
     time.sleep(1.1)  # l'API chiede almeno 1 secondo tra una chiamata e l'altra
     r.raise_for_status()
     return r.json()
+
+
+def save_api_calls(conn):
+    """Registra le richieste fatte, per tenere il conto rispetto al limite
+    mensile del piano gratuito (vedi fetch_closing.py)."""
+    conn.executemany("INSERT INTO api_calls (provider, purpose, called_at) VALUES ('oddspapi', ?, ?)",
+                     API_CALLS)
+    API_CALLS.clear()
+    conn.commit()
+
+
+def fixture_started(fx, now=None):
+    """True se la partita è già iniziata (o finita): le sue quote sarebbero
+    'live' e non vanno confuse con quelle pre-partita."""
+    if fx.get("statusId") not in (None, 0):          # 0 = non ancora iniziata
+        return True
+    start = (fx.get("startTime") or "").replace("Z", "+00:00")
+    now = now or datetime.now(timezone.utc)
+    try:
+        return datetime.fromisoformat(start) <= now
+    except ValueError:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +187,61 @@ def find_match_id(cur, league, start_time, home, away):
         if min(sh, sa) >= 0.5 and sh + sa >= 1.4 and sh + sa > best_score:
             best, best_score = match_id, sh + sa
     return best
+
+
+def match_id_for_fixture(cur, fx, league, home, away):
+    """La nostra partita per un fixture di OddsPapi: prima il codice già
+    salvato (external_ids), altrimenti il confronto per nomi e data, e in
+    quel caso il codice viene salvato per le volte successive. Aggiorna
+    anche l'orario di inizio se non lo conosciamo ancora."""
+    fid = str(fx.get("fixtureId") or "")
+    match_id = None
+    if fid:
+        row = cur.execute("SELECT match_id FROM external_ids WHERE provider = 'oddspapi' "
+                          "AND external_id = ?", (fid,)).fetchone()
+        match_id = row[0] if row else None
+    if match_id is None:
+        match_id = find_match_id(cur, league, fx["startTime"], home, away)
+        if match_id is not None and fid:
+            cur.execute("INSERT OR REPLACE INTO external_ids (provider, external_id, match_id) "
+                        "VALUES ('oddspapi', ?, ?)", (fid, match_id))
+    if match_id is not None:
+        cur.execute("UPDATE matches SET kickoff_utc = datetime(?) WHERE id = ? "
+                    "AND kickoff_utc IS NULL", (fx["startTime"], match_id))
+    return match_id
+
+
+def save_prices(cur, table, match_id, label, prices, snapshot_time):
+    """Salva le quote di un bookmaker per una partita. Una nuova "fotografia"
+    solo se la quota è cambiata dall'ultima volta; se è uguale aggiorniamo
+    solo l'orario, così si sa che era ancora valida (serve al filtro sulle
+    quote vecchie della dashboard)."""
+    for selection, odds in prices.items():
+        last = cur.execute(f"""SELECT id, odds FROM {table}
+                               WHERE match_id = ? AND bookmaker = ? AND selection = ?
+                               ORDER BY snapshot_time DESC LIMIT 1""",
+                           (match_id, label, selection)).fetchone()
+        if last and abs(last[1] - odds) < 1e-9:
+            cur.execute(f"UPDATE {table} SET snapshot_time = ? WHERE id = ?",
+                        (snapshot_time, last[0]))
+            continue
+        cur.execute(f"""
+            INSERT INTO {table} (match_id, bookmaker, market, selection, odds, snapshot_time)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (match_id, label, market_of(selection), selection, odds, snapshot_time))
+
+
+def update_virtual_closing(cur, match_id, fair, snapshot_time):
+    """Aggiorna la "chiusura" (prezzo giusto Pinnacle) delle scommesse
+    virtuali di questa partita, SOLO se la quota è stata presa prima del
+    calcio d'inizio. Senza orario noto si ripiega sulla data (come prima)."""
+    for selection, p in fair.items():
+        cur.execute("""UPDATE virtual_bets SET close_fair_prob = ?, close_updated_at = ?
+                       WHERE match_id = ? AND selection = ? AND match_id IN (
+                           SELECT id FROM matches WHERE home_goals IS NULL AND (
+                               (kickoff_utc IS NOT NULL AND kickoff_utc > datetime(?))
+                               OR (kickoff_utc IS NULL AND date >= date(?))))""",
+                    (p, snapshot_time, match_id, selection, snapshot_time, snapshot_time))
 
 
 def load_market_meta(conn):
@@ -285,12 +366,7 @@ def record_virtual_bets(cur, run_prices, snapshot_time):
         if not fair:
             continue
         # aggiorna la "chiusura" delle scommesse già registrate (partita non iniziata)
-        for selection, p in fair.items():
-            cur.execute("""UPDATE virtual_bets SET close_fair_prob = ?, close_updated_at = ?
-                           WHERE match_id = ? AND selection = ? AND match_id IN (
-                               SELECT id FROM matches WHERE date >= date('now')
-                               AND home_goals IS NULL)""",
-                        (p, snapshot_time, match_id, selection))
+        update_virtual_closing(cur, match_id, fair, snapshot_time)
         for book, prices in by_book.items():
             if book == REFERENCE_BOOKMAKER[1]:
                 continue
@@ -341,34 +417,17 @@ def main():
             prices, scorers = parse_markets((fx.get("bookmakerOdds") or {}).get(slug), meta)
             if not league or not prices or not fx.get("startTime"):
                 continue
+            if fixture_started(fx):
+                continue   # quote live: non sono quote pre-partita
             home = names.get(int(fx["participant1Id"]), "?")
             away = names.get(int(fx["participant2Id"]), "?")
-            match_id = find_match_id(cur, league, fx["startTime"], home, away)
+            match_id = match_id_for_fixture(cur, fx, league, home, away)
             if match_id is None:
                 unmatched.add(f"{league}: {home} - {away} ({fx['startTime'][:10]})")
                 continue
             table = "reference_odds" if slug == REFERENCE_BOOKMAKER[0] else "odds_snapshots"
             run_prices.setdefault(match_id, {})[label] = prices
-            for selection, odds in prices.items():
-                # Salviamo una nuova "fotografia" solo se la quota è cambiata
-                # dall'ultima volta: stesso storico dei movimenti, ma senza
-                # riempire il database di righe identiche a ogni esecuzione.
-                last = cur.execute(f"""SELECT odds FROM {table}
-                                       WHERE match_id = ? AND bookmaker = ? AND selection = ?
-                                       ORDER BY snapshot_time DESC LIMIT 1""",
-                                   (match_id, label, selection)).fetchone()
-                if last and abs(last[0] - odds) < 1e-9:
-                    cur.execute(f"""UPDATE {table} SET snapshot_time = ?
-                                    WHERE id = (SELECT id FROM {table}
-                                                WHERE match_id = ? AND bookmaker = ? AND selection = ?
-                                                ORDER BY snapshot_time DESC LIMIT 1)""",
-                                (snapshot_time, match_id, label, selection))
-                    continue
-                cur.execute(f"""
-                    INSERT INTO {table} (match_id, bookmaker, market,
-                                         selection, odds, snapshot_time)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (match_id, label, market_of(selection), selection, odds, snapshot_time))
+            save_prices(cur, table, match_id, label, prices, snapshot_time)
             saved += 1
             if table == "odds_snapshots":   # marcatori: solo bookmaker giocabili
                 for player_name, odds in scorers.items():
@@ -384,6 +443,7 @@ def main():
     conn.commit()
     record_virtual_bets(cur, run_prices, snapshot_time)
     conn.commit()
+    save_api_calls(conn)
     conn.close()
 
     if unmatched:
