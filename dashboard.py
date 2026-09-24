@@ -14,6 +14,7 @@ from value_calculator import remove_bookmaker_margin, find_value_bets, combine_p
 from markets import model_probabilities, long_label, market_of, MARKET_NAMES, scorer_key
 from value_calculator import expected_value, kelly_fraction
 from github_storage import read_json_file, write_json_file
+import json
 import math
 import uuid
 from datetime import datetime, timezone
@@ -666,8 +667,9 @@ if matches_df.empty:
              "Torna più tardi, oppure aggiorna i dati.")
     st.stop()
 
-tab_opportunita, tab_schedina, tab_storico, tab_marcatori, tab_tutte = st.tabs(
-    ["🎯 Opportunità di valore", "🎟️ Schedina", "📊 Storico schedine", "⚽ Marcatori", "📋 Tutte le partite"]
+tab_opportunita, tab_schedina, tab_storico, tab_marcatori, tab_tutte, tab_performance = st.tabs(
+    ["🎯 Opportunità di valore", "🎟️ Schedina", "📊 Storico schedine", "⚽ Marcatori",
+     "📋 Tutte le partite", "📈 Performance del modello"]
 )
 
 # ---------------------------------------------------------------------------
@@ -1107,3 +1109,91 @@ with tab_tutte:
         "confronto con le quote (e quindi la convenienza) è nella scheda "
         "'Opportunità di valore'."
     )
+
+
+# ---------------------------------------------------------------------------
+# SCHEDA 6: Performance del modello (risultati del backtest settimanale)
+# ---------------------------------------------------------------------------
+with tab_performance:
+    try:
+        with open("backtest_report.json") as f:
+            bt = json.load(f)
+    except (FileNotFoundError, ValueError):
+        bt = None
+
+    if bt is None:
+        st.info("Il backtest non è ancora stato eseguito. Gira in automatico una volta a "
+                "settimana (workflow 'Backtest'), oppure puoi avviarlo a mano da GitHub Actions.")
+    else:
+        st.caption(
+            f"Simulazione su {bt['partite_valutate']} partite dei 5 campionati principali "
+            f"({bt['periodo']['da']} → {bt['periodo']['a']}): ogni mese il modello è stato "
+            "allenato solo sulle partite precedenti e ha previsto quelle del mese, come fa "
+            "l'app ogni giorno. Aggiornato: " + bt["generato"][:10] + ".")
+
+        ll = bt["1x2"]["log_loss"]
+        scarto = ll["modello"] / ll["pinnacle_chiusura"] - 1
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Errore del modello (log loss 1X2)", f"{ll['modello']:.4f}",
+                  help="Più basso è meglio. Misura quanto le probabilità erano lontane dai risultati.")
+        c2.metric("Errore di Pinnacle alla chiusura", f"{ll['pinnacle_chiusura']:.4f}",
+                  help="Il prezzo più efficiente del mercato: il riferimento da battere.")
+        c3.metric("Modello rispetto a Pinnacle", f"{scarto:+.1%}",
+                  help="Positivo = il modello sbaglia più del mercato.")
+        if scarto > 0:
+            st.warning(
+                "Il modello, da solo, prevede peggio del mercato. È normale per un modello "
+                "basato solo sui risultati: significa che gran parte del 'valore' che trova "
+                "è in realtà errore del modello, non un vantaggio reale. Guarda sotto la "
+                "miscela modello/mercato e il ROI per fascia di valore atteso.")
+
+        st.subheader("Calibrazione (1X2)")
+        st.caption("Per ogni fascia di probabilità prevista: quante volte l'esito si è "
+                   "verificato davvero. Un modello ben calibrato ha le due colonne simili.")
+        cal = pd.DataFrame(bt["1x2"]["calibrazione"])
+        if not cal.empty:
+            st.dataframe(cal.rename(columns={"fascia": "Fascia", "n": "Esiti", "prevista":
+                                             "Prob. prevista", "reale": "Frequenza reale"}),
+                         hide_index=True, width='stretch')
+            st.line_chart(cal.set_index("fascia")[["prevista", "reale"]])
+
+        st.subheader("Scommettere dove il modello vede valore")
+        st.caption("1 unità su ogni esito con valore atteso positivo, alle quote medie dei "
+                   "bookmaker qualche giorno prima della partita. CLV = quanto la quota "
+                   "presa batteva la quota finale di Pinnacle senza margine: se è positivo "
+                   "in media, il vantaggio è probabilmente reale e non fortuna.")
+        def bet_table(rows):
+            df = pd.DataFrame(rows)
+            if df.empty:
+                return df
+            for c in ("vinte", "roi", "clv_medio"):
+                df[c] = (df[c] * 100).round(1)
+            return df.rename(columns={"fascia_ev": "Fascia EV", "scommesse": "Scommesse",
+                                      "vinte": "Vinte %", "roi": "ROI %", "clv_medio": "CLV medio %"})
+        st.markdown("**Solo modello**")
+        st.dataframe(bet_table(bt["1x2"]["scommesse_modello"]), hide_index=True, width='stretch')
+        if bt["1x2"].get("scommesse_miscela"):
+            w = bt["1x2"]["peso_modello_migliore"]
+            st.markdown(f"**Miscela: {w:.0%} modello + {1 - w:.0%} mercato (Pinnacle prima della partita)**")
+            st.dataframe(bet_table(bt["1x2"]["scommesse_miscela"]), hide_index=True, width='stretch')
+
+        st.subheader("Quanto fidarsi del modello rispetto al mercato")
+        st.caption("Errore (log loss) delle previsioni che mescolano modello e quote di "
+                   "Pinnacle con pesi diversi. Il peso con l'errore più basso dice quanto "
+                   "il modello aggiunge informazione rispetto al mercato.")
+        st.dataframe(pd.DataFrame(bt["1x2"]["miscela"]).rename(
+            columns={"peso_modello": "Peso del modello", "log_loss": "Log loss"}),
+            hide_index=True, width='stretch')
+
+        with st.expander("Under/Over 2.5 e Goal/No Goal"):
+            ou = bt["over_under_2_5"]
+            if ou.get("log_loss"):
+                st.write(f"Log loss Under/Over 2.5 — modello {ou['log_loss']['modello']:.4f}, "
+                         f"Pinnacle chiusura {ou['log_loss']['pinnacle_chiusura']:.4f}")
+            st.dataframe(pd.DataFrame(ou["calibrazione"]), hide_index=True, width='stretch')
+            st.dataframe(bet_table(ou["scommesse_modello"]), hide_index=True, width='stretch')
+            st.markdown("**Goal/No Goal — calibrazione** (per questo mercato lo storico non ha quote)")
+            st.dataframe(pd.DataFrame(bt["goal_no_goal"]["calibrazione"]), hide_index=True,
+                         width='stretch')
+        with st.expander("Per campionato"):
+            st.dataframe(pd.DataFrame(bt["per_campionato_log_loss"]).T, width='stretch')
