@@ -1194,7 +1194,9 @@ with tab_performance:
                        "bookmaker del file (include anche siti non disponibili in Italia).")
             nomi = {"1x2_bet365": "1X2 · bet365", "1x2_quota_massima": "1X2 · quota massima",
                     "ou25_bet365": "Under/Over 2.5 · bet365",
-                    "ou25_quota_massima": "Under/Over 2.5 · quota massima"}
+                    "ou25_quota_massima": "Under/Over 2.5 · quota massima",
+                    "1x2_quota_massima_potenza": "1X2 · quota massima (margine 'potenza')",
+                    "ou25_quota_massima_potenza": "Under/Over 2.5 · quota massima (margine 'potenza')"}
             righe = []
             for chiave, rows in bt["contro_pinnacle"].items():
                 for r in rows:
