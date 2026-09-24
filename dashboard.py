@@ -1722,6 +1722,42 @@ with tab_analisi:
             c3.metric("Modello rispetto a Pinnacle", f"{scarto:+.1%}",
                       help="Positivo = il modello sbaglia più del mercato.")
 
+            v2 = bt.get("v2")
+            if v2:
+                st.subheader("Migliorare il modello senza ingannarsi")
+                st.caption(
+                    f"Le varianti del modello si confrontano sulla VALIDAZIONE "
+                    f"({v2['divisione']['validazione']}) e la migliore si verifica sul TEST "
+                    f"({v2['divisione']['test']}), che non serve mai a scegliere. Log loss: più "
+                    "basso è meglio. Una differenza conta solo se il suo intervallo al 95% non "
+                    "comprende lo zero.")
+                rif = v2.get("riferimenti", {})
+                var_df = pd.DataFrame(v2["varianti"])
+                var_df["nota"] = ["base (usata oggi)" if b else ("scelta" if v == v2["variante_scelta"] else "")
+                                  for v, b in zip(var_df["variante"], var_df["base"])]
+                var_df.loc[var_df["variante"] == v2["variante_scelta"], "nota"] = (
+                    var_df.loc[var_df["variante"] == v2["variante_scelta"], "nota"]
+                    .replace("base (usata oggi)", "base e scelta").replace("", "scelta"))
+                st.dataframe(var_df[["variante", "validazione", "test", "nota"]].rename(columns={
+                    "variante": "Variante", "validazione": "Log loss validazione",
+                    "test": "Log loss test", "nota": ""}), hide_index=True, width='stretch')
+                if rif.get("test"):
+                    st.caption(f"Per confronto, Pinnacle sulle stesse partite del test: "
+                               f"{rif['test']['pinnacle_prima']} qualche giorno prima, "
+                               f"{rif['test']['pinnacle_chiusura']} alla chiusura.")
+                righe = []
+                for c in v2.get("confronti", []):
+                    if c["significativa"]:
+                        esito = "A migliore" if c["differenza"] < 0 else "A peggiore"
+                    else:
+                        esito = "non distinguibili"
+                    righe.append({"Confronto (A contro B)": c["confronto"], "Periodo": c["periodo"],
+                                  "Differenza": c["differenza"],
+                                  "Intervallo 95%": f"{c['da']:+.4f} / {c['a']:+.4f}",
+                                  "Esito": esito, "Partite": c["partite"]})
+                if righe:
+                    st.dataframe(pd.DataFrame(righe), hide_index=True, width='stretch')
+
             if bt.get("contro_pinnacle"):
                 st.subheader("Strategia dell'app: bookmaker contro Pinnacle")
                 st.caption("Si gioca quando la quota di un bookmaker supera la quota 'giusta' di "
