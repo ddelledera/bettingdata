@@ -1,0 +1,34 @@
+# Backtest settimanale del modello: simula gli ultimi due anni e mezzo mese
+# per mese e salva i risultati in backtest_report.json (scheda "Performance
+# del modello" della dashboard). Non tocca data.db e non usa chiavi API:
+# scarica lo storico pubblico di football-data.co.uk.
+
+name: Backtest
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"   # ogni lunedì alle 4:00 UTC (prima dell'aggiornamento delle 6)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Esegui il backtest
+        run: python backtest.py
+      - name: Salva il report
+        run: |
+          git config user.name "backtest-automatico"
+          git config user.email "actions@github.com"
+          git add backtest_report.json
+          git diff --staged --quiet || git commit -m "Backtest settimanale"
+          git pull --rebase
+          git push
