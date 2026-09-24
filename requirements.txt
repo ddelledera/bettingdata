@@ -1,10 +1,12 @@
 # Versioni FISSATE: sono quelle con cui passano i test di regressione.
+# ATTENZIONE: devono funzionare con Python 3.11 (quello dei workflow):
+# numpy 2.5 e scipy 1.18 richiedono Python 3.12, quindi qui non vanno.
 # Senza versioni, ogni giro installerebbe l'ultima uscita e un aggiornamento
 # potrebbe rompere l'app o il giro giornaliero senza nessuna nostra modifica.
 # Per aggiornarle: cambia i numeri, carica il file e controlla che il
 # workflow "Test" resti verde.
-numpy==2.5.3
-scipy==1.18.1
+numpy==2.4.6
+scipy==1.17.1
 pandas==3.0.6
 requests==2.34.2
 streamlit==1.64.0
