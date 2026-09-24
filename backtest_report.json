@@ -468,9 +468,174 @@
    "pinnacle_chiusura": 0.9579
   }
  },
+ "v2": {
+  "divisione": {
+   "validazione": "fino al 30/06/2025",
+   "test": "dal 01/07/2025"
+  },
+  "varianti": [
+   {
+    "variante": "decadimento 0.001, ridge 0.5",
+    "base": true,
+    "validazione": 0.9876,
+    "test": 0.9769
+   },
+   {
+    "variante": "decadimento 0.0005, ridge 0.1",
+    "base": false,
+    "validazione": 0.9903,
+    "test": 0.9768
+   },
+   {
+    "variante": "decadimento 0.0005, ridge 0.5",
+    "base": false,
+    "validazione": 0.9891,
+    "test": 0.9759
+   },
+   {
+    "variante": "decadimento 0.0005, ridge 2",
+    "base": false,
+    "validazione": 0.9883,
+    "test": 0.9758
+   },
+   {
+    "variante": "decadimento 0.0005, ridge 5",
+    "base": false,
+    "validazione": 0.9891,
+    "test": 0.9767
+   },
+   {
+    "variante": "decadimento 0.001, ridge 0.1",
+    "base": false,
+    "validazione": 0.9889,
+    "test": 0.9779
+   },
+   {
+    "variante": "decadimento 0.001, ridge 2",
+    "base": false,
+    "validazione": 0.987,
+    "test": 0.9767
+   },
+   {
+    "variante": "decadimento 0.001, ridge 5",
+    "base": false,
+    "validazione": 0.9883,
+    "test": 0.9777
+   },
+   {
+    "variante": "decadimento 0.002, ridge 0.1",
+    "base": false,
+    "validazione": 0.9877,
+    "test": 0.9819
+   },
+   {
+    "variante": "decadimento 0.002, ridge 0.5",
+    "base": false,
+    "validazione": 0.9865,
+    "test": 0.9806
+   },
+   {
+    "variante": "decadimento 0.002, ridge 2",
+    "base": false,
+    "validazione": 0.9861,
+    "test": 0.98
+   },
+   {
+    "variante": "decadimento 0.002, ridge 5",
+    "base": false,
+    "validazione": 0.9884,
+    "test": 0.9813
+   },
+   {
+    "variante": "decadimento 0.004, ridge 0.1",
+    "base": false,
+    "validazione": 0.9903,
+    "test": 0.9918
+   },
+   {
+    "variante": "decadimento 0.004, ridge 0.5",
+    "base": false,
+    "validazione": 0.9887,
+    "test": 0.9895
+   },
+   {
+    "variante": "decadimento 0.004, ridge 2",
+    "base": false,
+    "validazione": 0.9884,
+    "test": 0.9877
+   },
+   {
+    "variante": "decadimento 0.004, ridge 5",
+    "base": false,
+    "validazione": 0.9926,
+    "test": 0.9902
+   }
+  ],
+  "variante_scelta": "decadimento 0.002, ridge 2",
+  "riferimenti": {
+   "validazione": {
+    "partite": 1736,
+    "pinnacle_prima": 0.964,
+    "pinnacle_chiusura": 0.9609
+   },
+   "test": {
+    "partite": 885,
+    "pinnacle_prima": 0.9634,
+    "pinnacle_chiusura": 0.9644
+   }
+  },
+  "confronti": [
+   {
+    "confronto": "scelta (decadimento 0.002, ridge 2) contro base",
+    "periodo": "validazione",
+    "partite": 1736,
+    "differenza": -0.0015,
+    "da": -0.0042,
+    "a": 0.0013,
+    "significativa": false
+   },
+   {
+    "confronto": "scelta (decadimento 0.002, ridge 2) contro base",
+    "periodo": "test",
+    "partite": 885,
+    "differenza": 0.0031,
+    "da": -0.001,
+    "a": 0.0068,
+    "significativa": false
+   },
+   {
+    "confronto": "scelta contro Pinnacle prima della partita",
+    "periodo": "test",
+    "partite": 885,
+    "differenza": 0.0167,
+    "da": 0.0073,
+    "a": 0.0252,
+    "significativa": true
+   },
+   {
+    "confronto": "base contro Pinnacle prima della partita",
+    "periodo": "test",
+    "partite": 885,
+    "differenza": 0.0136,
+    "da": 0.0025,
+    "a": 0.0245,
+    "significativa": true
+   },
+   {
+    "confronto": "Pinnacle prima contro Pinnacle chiusura",
+    "periodo": "test",
+    "partite": 885,
+    "differenza": -0.001,
+    "da": -0.0058,
+    "a": 0.0031,
+    "significativa": false
+   }
+  ],
+  "copertura_tiri": 1.0
+ },
  "periodo": {
   "da": "2024-08-15",
   "a": "2026-09-20"
  },
- "generato": "2026-09-24T07:05:51.382717+00:00"
+ "generato": "2026-09-24T11:19:31.799258+00:00"
 }
