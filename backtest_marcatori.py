@@ -24,6 +24,30 @@ Varianti (stessi gol attesi della squadra, stessi minuti attesi per tutte):
 
 Periodi: SVILUPPO fino al 31/07/2026 per scegliere; HOLDOUT da agosto 2026,
 chiuso finché OPEN_HOLDOUT resta False.
+
+PROTOCOLLO CONGELATO (24/09/2026), scritto PRIMA di aprire l'holdout:
+  Baseline:  M0 attuale.
+  Candidata: M2 npxG + rigori, con la correzione "se gioca": i gol attesi
+             del giocatore divisi per la frequenza con cui è sceso in campo
+             nelle ultime 5 partite della squadra (minimo 0,2). La scommessa
+             marcatore è rimborsata se il giocatore non gioca, quindi conta
+             P(segna | gioca). Forma e parametri esattamente come nello
+             sviluppo; niente viene cambiato dopo aver visto l'holdout.
+  Regola di adozione (sull'holdout, candidata contro M0):
+    1. log loss migliore, con intervallo al 95% interamente sotto zero;
+    2. Brier non peggiore (differenza media <= 0);
+    3. calibrazione complessiva non peggiore (errore medio di calibrazione
+       della candidata <= quello di M0 + 0,005);
+    4. nessun peggioramento grosso e sistematico in un singolo campionato:
+       nessun campionato con differenza di log loss > +0,005 E intervallo
+       al 95% interamente sopra zero.
+  La divisione per campionato è un controllo di robustezza, non un veto 3 su 5.
+  Le altre varianti (M1, M2 senza correzione, M0 con correzione) si mostrano
+  solo come diagnostica: se una risultasse migliore, NON si adotta su questo
+  holdout ma diventa candidata per il prossimo periodo dal vivo.
+  Nelle fasce alte (40-50%, oltre 50%) si riportano n, prevista e reale:
+  un'eventuale sovrastima è il prossimo problema da studiare, non da
+  correggere con questo holdout.
 Metriche: log loss e Brier (più bassi = meglio), calibrazione per fasce.
 Usa solo data.db (niente richieste), scrive scorer_backtest_report.json.
 """
@@ -42,7 +66,7 @@ DB_PATH = "data.db"
 REPORT_PATH = "scorer_backtest_report.json"
 LEAGUES = ["Serie A", "Premier League", "La Liga", "Bundesliga", "Ligue 1"]
 HOLDOUT_FROM = "2026-08-01"
-OPEN_HOLDOUT = False
+OPEN_HOLDOUT = True    # aperto il 24/09/2026, una volta sola, a protocollo congelato
 STATS_WINDOW_DAYS = 365
 RECENT_TEAM_MATCHES = 5
 PRIOR_MINUTES = 450          # come l'app
@@ -62,6 +86,8 @@ VARIANTS = {
     "M2 npxG 75% + gol 25% + rigori": {"kind": "np", "w_goals": 0.25, "pens": True},
 }
 BASE = "M0 attuale (xG 65% + gol 35%)"
+CONDITIONAL_MIN_PLAY = 0.2     # minimo della frequenza di presenza (come nello sviluppo)
+CANDIDATE = "M2 npxG + rigori | se gioca"
 
 
 def load(conn):
@@ -133,10 +159,12 @@ def predict_all(conn):
                 cutoff = (date.fromisoformat(d) - timedelta(days=STATS_WINDOW_DAYS)).isoformat()
                 # giocatori con minuti nelle ultime partite della squadra
                 recent_minutes = defaultdict(int)
+                recent_apps = defaultdict(int)
                 for rid in recent_ids:
                     for pid, tb, mins, *_ in by_event.get(rid, []):
                         if tb == team_b:
                             recent_minutes[pid] += mins
+                            recent_apps[pid] += mins > 0
                 for pid, rm in recent_minutes.items():
                     em = min(rm / RECENT_TEAM_MATCHES, 90)
                     h = [x for x in history[pid] if x[0] >= cutoff]
@@ -155,7 +183,7 @@ def predict_all(conn):
                         "xg90": shrink(xg, mins_xg), "g90": shrink(goals, mins),
                         "npxg90": shrink(max(xg - PEN_XG * pens_xgok, 0), mins_xg),
                         "npg90": shrink(goals - pens, mins),
-                        "pens": pens,
+                        "pens": pens, "p_play": recent_apps[pid] / RECENT_TEAM_MATCHES,
                     }
                 if not pool:
                     continue
@@ -191,7 +219,11 @@ def predict_all(conn):
                     preds.append({
                         "event": eid, "date": d, "league": league, "player": pid,
                         "scored": int(r[3] > 0), "pens": r[5],
-                        "p": {n: 1 - math.exp(-probs[n][pid]) for n in probs},
+                        # probabilità semplice e "se gioca" (vedi protocollo)
+                        "p": {**{n: 1 - math.exp(-probs[n][pid]) for n in probs},
+                              **{n + " | se gioca": 1 - math.exp(
+                                  -probs[n][pid] / max(pool[pid]["p_play"], CONDITIONAL_MIN_PLAY))
+                                 for n in probs}},
                     })
         # aggiorno la storia DOPO aver previsto la partita
         for pid, tb, mins, goals, xg, pens, xg_missing in rows:
@@ -227,12 +259,45 @@ def calibration(preds, name):
     out = []
     for lo, hi in zip(BANDS[:-1], BANDS[1:]):
         sel = [x for x in preds if lo <= x["p"][name] < hi]
-        if len(sel) >= 30:
+        if len(sel) >= 10:
             out.append({"fascia": f"{lo:.0%}-{min(hi, 1):.0%}" if hi < 1 else f"oltre {lo:.0%}",
                         "n": len(sel),
                         "prevista": round(float(np.mean([x["p"][name] for x in sel])), 3),
                         "reale": round(float(np.mean([x["scored"] for x in sel])), 3)})
     return out
+
+
+def calibration_error(preds, name):
+    """Errore medio di calibrazione (fasce del 10%, pesate per numerosità)."""
+    tot, err = len(preds), 0.0
+    for i in range(10):
+        sel = [x for x in preds if i / 10 <= x["p"][name] < (i + 1) / 10]
+        if sel:
+            err += len(sel) / tot * abs(np.mean([x["p"][name] for x in sel])
+                                        - np.mean([x["scored"] for x in sel]))
+    return float(err)
+
+
+def adoption_check(preds):
+    ll = paired(preds, CANDIDATE, BASE, "log_loss")
+    br = paired(preds, CANDIDATE, BASE, "brier")
+    ece_c, ece_b = calibration_error(preds, CANDIDATE), calibration_error(preds, BASE)
+    per_lega = {}
+    for l in LEAGUES:
+        sel = [x for x in preds if x["league"] == l]
+        if len(sel) >= 200:
+            per_lega[l] = paired(sel, CANDIDATE, BASE, "log_loss")
+    peggiori = [l for l, c in per_lega.items() if c["differenza"] > 0.005 and c["da"] > 0]
+    regole = {
+        "log loss migliore, intervallo tutto sotto zero": ll["a"] < 0,
+        "Brier non peggiore": br["differenza"] <= 0,
+        "calibrazione non peggiore": ece_c <= ece_b + 0.005,
+        "nessun campionato peggiorato in modo grosso e sistematico": not peggiori,
+    }
+    return {"log_loss": ll, "brier": br,
+            "calibrazione": {"candidata": round(ece_c, 4), "M0": round(ece_b, 4)},
+            "per_campionato": per_lega, "campionati_peggiorati": peggiori,
+            "regole": regole, "adottare": all(regole.values())}
 
 
 def summarize(preds):
@@ -244,7 +309,8 @@ def summarize(preds):
             continue
         if not sel:
             continue
-        names = [n for n in VARIANTS if all(n in x["p"] for x in sel)]
+        order = list(VARIANTS) + [n + " | se gioca" for n in VARIANTS]
+        names = [n for n in order if all(n in x["p"] for x in sel)]
         var = []
         for n in names:
             var.append({
@@ -256,7 +322,10 @@ def summarize(preds):
                 "contro_M0_brier": None if n == BASE else paired(sel, n, BASE, "brier"),
                 "calibrazione": calibration(sel, n),
             })
-        rep[period] = {"previsioni": len(sel), "partite": len({x["event"] for x in sel}),
+        extra = {}
+        if period == "holdout" and CANDIDATE in names:
+            extra["decisione"] = adoption_check(sel)
+        rep[period] = {**extra, "previsioni": len(sel), "partite": len({x["event"] for x in sel}),
                        "frequenza_reale": round(float(np.mean([x["scored"] for x in sel])), 4),
                        "da": min(x["date"] for x in sel), "a": max(x["date"] for x in sel),
                        "varianti": var,
@@ -291,7 +360,27 @@ def main():
         print("      calibrazione: " + ", ".join(f"{k['fascia']} {k['prevista']:.0%}->{k['reale']:.0%} (n={k['n']})"
                                              for k in v["calibrazione"]))
     print("scelta sullo sviluppo:", dev["scelta"])
-    print("holdout:", rep.get("holdout"))
+    ho = rep.get("holdout")
+    if not ho or not ho.get("decisione"):
+        print("holdout:", ho)
+        return
+    print(f"\nHOLDOUT {ho['da']} / {ho['a']}: {ho['previsioni']} previsioni su {ho['partite']} partite, "
+          f"hanno segnato il {ho['frequenza_reale']:.1%}")
+    for v in ho["varianti"]:
+        c = v["contro_M0_log_loss"]
+        tag = "  <- CANDIDATA" if v["variante"] == CANDIDATE else ("  (baseline)" if v["variante"] == BASE else "  (solo diagnostica)")
+        print(f"  {v['variante']:<44} log loss {v['log_loss']}  Brier {v['brier']}  prevista {v['prevista_media']:.1%}{tag}"
+              + (f"\n      contro M0: {c['differenza']:+.5f} (95%: {c['da']:+.5f} / {c['a']:+.5f})" if c else ""))
+        print("      calibrazione: " + ", ".join(f"{k['fascia']} {k['prevista']:.0%}->{k['reale']:.0%} (n={k['n']})"
+                                             for k in v["calibrazione"]))
+    d = ho["decisione"]
+    print("\nREGOLA DI ADOZIONE (candidata contro M0):")
+    for k, ok in d["regole"].items():
+        print(f"  {'OK' if ok else 'NO'}  {k}")
+    print("  calibrazione (errore medio):", d["calibrazione"])
+    print("  per campionato:", {l: f"{c['differenza']:+.5f} ({c['da']:+.5f} / {c['a']:+.5f})"
+                                for l, c in d["per_campionato"].items()})
+    print("DECISIONE:", "ADOTTARE la candidata" if d["adottare"] else "NON adottare: resta M0")
 
 
 if __name__ == "__main__":

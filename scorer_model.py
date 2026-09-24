@@ -1,71 +1,64 @@
 """
-Distribuisce i gol attesi di una squadra (che il nostro Dixon-Coles calcola
-già, per la partita nel suo complesso) tra i giocatori di quella squadra,
-per stimare la probabilità che ciascuno segni almeno un gol.
+Probabilità che ogni giocatore segni almeno un gol in una partita.
 
-COME FUNZIONA: ad ogni giocatore diamo un "punteggio" che riflette quanto
-tende a essere pericoloso in attacco (basato sui suoi xG e gol per 90 minuti
-di gioco, quando gioca), corretto per quanti minuti ci si aspetta che giochi
-in questa partita specifica. Poi normalizziamo questi punteggi in modo che
-sommino a 1 (una "quota" della minaccia offensiva totale della squadra), e
-usiamo quella quota per dividere i gol attesi della squadra tra i giocatori.
-
-Infine, per ogni giocatore, la probabilità di segnare almeno una volta si
-calcola con la formula di Poisson: 1 - e^(-lambda), dove lambda è il numero
-di gol attesi per quel giocatore in questa partita.
+VERSIONE ADOTTATA IL 24/09/2026 (backtest_marcatori.py, holdout superato):
+"M2 npxG + rigori | se gioca". Rispetto alla versione precedente (M0):
+  1. Gol su azione: i gol attesi della squadra SENZA i rigori vengono divisi
+     tra i giocatori in proporzione agli npxG/90 (xG senza rigori) per i
+     minuti attesi.
+  2. Rigori a parte: i rigori attesi della squadra vanno al probabile
+     rigorista, stimato dai rigori segnati nell'ultimo anno ("ristretto"
+     verso la media: 1 su 1 non fa di nessuno il rigorista sicuro), pesato
+     per la presenza in campo.
+  3. "Se gioca": la scommessa marcatore viene rimborsata se il giocatore non
+     entra, quindi la probabilità giusta è P(segna | gioca). I gol attesi
+     vengono divisi per la frequenza con cui il giocatore è sceso in campo
+     nelle ultime partite della squadra (minimo 0,2).
+Infine P(segna almeno un gol) = 1 - e^(-lambda).
+I parametri sono quelli congelati nel protocollo del backtest: non cambiarli
+senza rifare il backtest.
 """
 
 import numpy as np
 
+PEN_CONVERSION = 0.78      # rigori trasformati
+TAKER_PRIOR = 1.0          # "rigori fittizi" distribuiti in proporzione agli npxG
+CONDITIONAL_MIN_PLAY = 0.2
 
-def compute_scorer_rating(player_stats):
+
+def distribute_team_goals(team_expected_goals, players_stats, pen_attempts_per_match):
     """
-    player_stats: dict con almeno 'xg_per_90', 'goals_per_90',
-    'expected_minutes' (quanti minuti ci aspettiamo che giochi in QUESTA
-    partita, non la sua media stagionale).
-
-    Ritorna un punteggio (non ancora normalizzato) di quanto il giocatore
-    "assorbe" la minaccia offensiva della squadra in questa partita.
+    team_expected_goals: gol attesi della squadra (Dixon-Coles).
+    players_stats: lista di dict con 'npxg_per_90', 'expected_minutes',
+        'penalties_scored' (ultimo anno), 'play_rate' (quota delle ultime
+        partite della squadra in cui è sceso in campo), più i campi da
+        conservare (player_id, name, ...).
+    pen_attempts_per_match: rigori tentati attesi per squadra e partita nel
+        campionato.
+    Ritorna la lista arricchita con 'team_xg_share', 'expected_goals' (se
+    gioca) e 'prob_score_anytime' (se gioca). Lista vuota se mancano i dati.
     """
-    xg90 = player_stats.get("xg_per_90") or 0
-    goals90 = player_stats.get("goals_per_90") or 0
-    expected_minutes = player_stats.get("expected_minutes") or 0
-
-    # Peso maggiore agli xG (più stabili nel tempo) rispetto ai gol veri
-    # (più rumorosi, dipendono anche dalla fortuna sotto porta)
-    per_90_score = 0.65 * xg90 + 0.35 * goals90
-    return max(per_90_score * (expected_minutes / 90), 0)
-
-
-def distribute_team_goals(team_expected_goals, players_stats):
-    """
-    team_expected_goals: i gol attesi della squadra in questa partita
-        (il lambda che il nostro Dixon-Coles calcola già).
-    players_stats: lista di dict, uno per giocatore della squadra, con
-        almeno 'player_id', 'name', 'xg_per_90', 'goals_per_90',
-        'expected_minutes'.
-
-    Ritorna la stessa lista di giocatori, arricchita con:
-        'team_xg_share'     -> quota (0-1) della minaccia offensiva assorbita
-        'expected_goals'    -> gol attesi per QUEL giocatore in questa partita
-        'prob_score_anytime'-> probabilità di segnare almeno un gol
-    Se nessun giocatore ha un punteggio (es. dati mancanti per tutti),
-    ritorna una lista vuota — meglio non prevedere nulla che inventare numeri.
-    """
-    scores = [compute_scorer_rating(p) for p in players_stats]
+    scores = [max(p.get("npxg_per_90") or 0, 0) * (p.get("expected_minutes") or 0) / 90
+              for p in players_stats]
     total = sum(scores)
     if total <= 0:
         return []
+    lam_pen = min(pen_attempts_per_match * PEN_CONVERSION, team_expected_goals * 0.5)
+    lam_np = max(team_expected_goals - lam_pen, 0.05)
+    shares = [s / total for s in scores]
+    takers = [((p.get("penalties_scored") or 0) + TAKER_PRIOR * sh)
+              * min((p.get("expected_minutes") or 0) / 90, 1)
+              for p, sh in zip(players_stats, shares)]
+    tt = sum(takers) or 1.0
 
     results = []
-    for player, score in zip(players_stats, scores):
-        share = score / total
-        lam = team_expected_goals * share
-        prob_score = 1 - np.exp(-lam)
+    for p, sh, tk in zip(players_stats, shares, takers):
+        lam = lam_np * sh + lam_pen * tk / tt
+        lam_if_plays = lam / max(p.get("play_rate") or 0, CONDITIONAL_MIN_PLAY)
         results.append({
-            **player,
-            "team_xg_share": round(share, 4),
-            "expected_goals": round(lam, 4),
-            "prob_score_anytime": round(prob_score, 4),
+            **p,
+            "team_xg_share": round(sh, 4),
+            "expected_goals": round(lam_if_plays, 4),
+            "prob_score_anytime": round(float(1 - np.exp(-lam_if_plays)), 4),
         })
     return results

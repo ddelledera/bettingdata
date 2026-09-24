@@ -542,7 +542,7 @@ def render_scorer_card(row):
         <div class="spot-teams">{row['player']}</div>
         <div class="spot-pick">{row['team']} contro {avversario}</div>
         <div class="spot-big">{row['prob_score_anytime']:.0%}</div>
-        <div class="spot-big-label">probabilità di segnare (nostro modello)</div>
+        <div class="spot-big-label">probabilità di segnare, se gioca (nostro modello)</div>
         <div class="spot-meta">
             <span>Gol attesi <b>{row['expected_goals']:.2f}</b></span>
             <span>Minuti attesi <b>{minuti}</b></span>
@@ -1328,10 +1328,12 @@ with tab_storico:
 # ---------------------------------------------------------------------------
 with tab_marcatori:
     st.caption(
-        "In prova. Probabilità che ogni giocatore segni, secondo il nostro modello: i gol "
-        "attesi della squadra divisi tra i giocatori in base al loro rendimento. Il modello "
-        "non è ancora verificato sui risultati, e Pinnacle non quota i marcatori: il valore "
-        "atteso mostrato qui è solo indicativo."
+        "Probabilità che il giocatore segni SE GIOCA (se non entra, la scommessa marcatore "
+        "viene rimborsata): gol attesi della squadra divisi in base agli xG senza rigori, più "
+        "i rigori attribuiti al probabile rigorista. Verificato sui risultati passati: le "
+        "probabilità sono ben calibrate. Non ancora verificato contro le quote (Pinnacle non "
+        "quota i marcatori): il valore atteso qui resta indicativo. Per chi ha giocato poco "
+        "di recente la stima è più incerta."
     )
 
     try:

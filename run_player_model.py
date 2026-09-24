@@ -32,67 +32,91 @@ RECENT_TEAM_MATCHES = 5    # partite recenti della squadra per stimare i minuti
 STATS_WINDOW_DAYS = 365    # statistiche individuali: ultimi 12 mesi
 PRIOR_MINUTES = 450        # "restringimento" verso la media per chi ha giocato poco
 PRIOR_PER_90 = 0.10        # xG e gol per 90' di un giocatore qualunque
+PEN_XG = 0.79              # xG di un rigore: si toglie per avere gli npxG
+# Stessi valori del protocollo congelato in backtest_marcatori.py.
+
+
+def league_penalty_rate(conn, league):
+    """Rigori tentati attesi per squadra e partita nel campionato, dall'ultimo
+    anno (rigori segnati / 78% di trasformazione), con una piccola spinta
+    verso la media come nel backtest."""
+    goals, team_matches = conn.execute(f"""
+        SELECT COALESCE(SUM(s.penalties_scored), 0), COUNT(DISTINCT e.id) * 2
+        FROM bsd_events e LEFT JOIN player_match_stats s ON s.match_bsd_id = e.id
+        WHERE e.league = ? AND e.pens_done = 1
+          AND e.event_date >= date('now', '-{STATS_WINDOW_DAYS} days')""", (league,)).fetchone()
+    from scorer_model import PEN_CONVERSION
+    return (goals / PEN_CONVERSION + 2) / (team_matches + 20)
 
 
 def load_team_players_stats(conn, team_id):
     """Per ogni giocatore ATTUALMENTE in rosa (e non infortunato):
-    - xG/90 e gol/90 negli ultimi 12 mesi, "ristretti" verso una media
-      generica quando i minuti sono pochi (5 minuti con un gol non fanno
-      di nessuno un bomber da 18 gol a partita);
-    - minuti attesi e probabilità di partire titolare, dalle ultime
-      RECENT_TEAM_MATCHES partite della squadra (0 minuti se non ha giocato).
+    - npxG/90 negli ultimi 12 mesi (xG senza rigori), "ristretti" verso una
+      media generica quando i minuti sono pochi;
+    - rigori segnati nell'ultimo anno (per stimare il rigorista);
+    - minuti attesi, frequenza di presenza e di titolarità nelle ultime
+      RECENT_TEAM_MATCHES partite della squadra.
+    Come nel backtest: le righe con tiri ma senza xG (inizio stagione) non
+    contano negli xG; quelle senza tiri valgono xG zero.
     """
+    team_bsd = [r[0] for r in conn.execute("SELECT bsd_id FROM bsd_teams WHERE team_id = ?", (team_id,))]
+    if not team_bsd:
+        return []
+    tb = ",".join("?" * len(team_bsd))
     recent = [r[0] for r in conn.execute(f"""
         SELECT e.id FROM bsd_events e
-        WHERE e.stats_done = 1 AND (
-              e.home_bsd_team_id IN (SELECT bsd_id FROM bsd_teams WHERE team_id = ?)
-           OR e.away_bsd_team_id IN (SELECT bsd_id FROM bsd_teams WHERE team_id = ?))
+        WHERE e.stats_done = 1 AND (e.home_bsd_team_id IN ({tb}) OR e.away_bsd_team_id IN ({tb}))
         ORDER BY e.event_date DESC LIMIT {RECENT_TEAM_MATCHES}
-    """, (team_id, team_id))]
-    if not recent:
+    """, (*team_bsd, *team_bsd))]
+    if len(recent) < RECENT_TEAM_MATCHES:
         return []
     marks = ",".join("?" * len(recent))
+    ok_xg = "NOT (s.xg IS NULL AND s.shots > 0)"
+    window = f"s.match_date >= date('now', '-{STATS_WINDOW_DAYS} days')"
 
     rows = conn.execute(f"""
         SELECT pl.id, pl.name,
-               -- ultimi 12 mesi, tutte le squadre in cui ha giocato
                (SELECT SUM(minutes) FROM player_match_stats s
-                 WHERE s.player_id = pl.id AND s.match_bsd_id > 0
-                   AND s.match_date >= date('now', '-{STATS_WINDOW_DAYS} days')),
-               (SELECT SUM(goals) FROM player_match_stats s
-                 WHERE s.player_id = pl.id AND s.match_bsd_id > 0
-                   AND s.match_date >= date('now', '-{STATS_WINDOW_DAYS} days')),
+                 WHERE s.player_id = pl.id AND {window}),
                (SELECT SUM(minutes) FROM player_match_stats s
-                 WHERE s.player_id = pl.id AND s.match_bsd_id > 0 AND s.xg IS NOT NULL
-                   AND s.match_date >= date('now', '-{STATS_WINDOW_DAYS} days')),
-               (SELECT SUM(xg) FROM player_match_stats s
-                 WHERE s.player_id = pl.id AND s.match_bsd_id > 0 AND s.xg IS NOT NULL
-                   AND s.match_date >= date('now', '-{STATS_WINDOW_DAYS} days')),
-               -- ultime partite della squadra
+                 WHERE s.player_id = pl.id AND {window} AND {ok_xg}),
+               (SELECT SUM(COALESCE(xg, 0)) FROM player_match_stats s
+                 WHERE s.player_id = pl.id AND {window} AND {ok_xg}),
+               (SELECT SUM(COALESCE(penalties_scored, 0)) FROM player_match_stats s
+                 WHERE s.player_id = pl.id AND {window}),
+               (SELECT SUM(COALESCE(penalties_scored, 0)) FROM player_match_stats s
+                 WHERE s.player_id = pl.id AND {window} AND {ok_xg}),
+               -- ultime partite della squadra (solo con questa squadra)
                (SELECT COALESCE(SUM(minutes), 0) FROM player_match_stats s
-                 WHERE s.player_id = pl.id AND s.match_bsd_id IN ({marks})),
+                 WHERE s.player_id = pl.id AND s.match_bsd_id IN ({marks})
+                   AND (s.bsd_team_id IS NULL OR s.bsd_team_id IN ({tb}))),
+               (SELECT COALESCE(SUM(minutes > 0), 0) FROM player_match_stats s
+                 WHERE s.player_id = pl.id AND s.match_bsd_id IN ({marks})
+                   AND (s.bsd_team_id IS NULL OR s.bsd_team_id IN ({tb}))),
                (SELECT COALESCE(SUM(started), 0) FROM player_match_stats s
-                 WHERE s.player_id = pl.id AND s.match_bsd_id IN ({marks}))
+                 WHERE s.player_id = pl.id AND s.match_bsd_id IN ({marks})
+                   AND (s.bsd_team_id IS NULL OR s.bsd_team_id IN ({tb})))
         FROM players pl
         WHERE pl.team_id = ?
           AND (pl.availability IS NULL OR pl.availability IN ('', 'available'))
-    """, (*recent, *recent, team_id)).fetchall()
+    """, (*recent, *team_bsd, *recent, *team_bsd, *recent, *team_bsd, team_id)).fetchall()
 
-    n = len(recent)
+    n = RECENT_TEAM_MATCHES
+    k = PRIOR_MINUTES
+    shrink = lambda num, den: (num + PRIOR_PER_90 * k / 90) / (den + k) * 90
     players_stats = []
-    for player_id, name, mins, goals, mins_xg, xg, recent_mins, recent_starts in rows:
+    for (player_id, name, mins, mins_xg, xg, pens, pens_xgok,
+         recent_mins, recent_apps, recent_starts) in rows:
         expected_minutes = min(recent_mins / n, 90)
         if expected_minutes <= 0 or not mins:
             continue  # non ha giocato di recente: non lo consideriamo
-        k = PRIOR_MINUTES
-        xg90 = ((xg or 0) + PRIOR_PER_90 * k / 90) / ((mins_xg or 0) + k) * 90
-        goals90 = ((goals or 0) + PRIOR_PER_90 * k / 90) / (mins + k) * 90
         players_stats.append({
             "player_id": player_id,
             "name": name,
-            "xg_per_90": xg90,
-            "goals_per_90": goals90,
+            "npxg_per_90": shrink(max((xg or 0) - PEN_XG * (pens_xgok or 0), 0), mins_xg or 0),
+            "penalties_scored": pens or 0,
             "expected_minutes": expected_minutes,
+            "play_rate": recent_apps / n,
             "starting_probability": recent_starts / n,
         })
     return players_stats
@@ -131,7 +155,10 @@ def main():
                         SELECT id FROM matches WHERE date >= date('now'))""")
 
     predicted = 0
+    pen_rates = {}
     for match_id, home_team_id, away_team_id, league, eg_home, eg_away in matches:
+        if league not in pen_rates:
+            pen_rates[league] = league_penalty_rate(conn, league)
         for team_id, team_expected_goals, lato in [
             (home_team_id, eg_home, "casa"), (away_team_id, eg_away, "ospite")
         ]:
@@ -139,7 +166,7 @@ def main():
             if not players_stats:
                 continue  # nessun dato giocatore per questa squadra, saltiamo
 
-            results = distribute_team_goals(team_expected_goals, players_stats)
+            results = distribute_team_goals(team_expected_goals, players_stats, pen_rates[league])
             for r in results:
                 save_player_prediction(conn, r["player_id"], match_id, r)
                 predicted += 1
