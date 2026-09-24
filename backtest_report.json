@@ -283,6 +283,88 @@
    }
   ]
  },
+ "contro_pinnacle": {
+  "1x2_bet365": [
+   {
+    "soglia_vantaggio": "+0%",
+    "scommesse": 267,
+    "roi": -0.055,
+    "clv_medio": -0.006
+   },
+   {
+    "soglia_vantaggio": "+2%",
+    "scommesse": 115,
+    "roi": -0.161,
+    "clv_medio": 0.016
+   },
+   {
+    "soglia_vantaggio": "+5%",
+    "scommesse": 50,
+    "roi": -0.43,
+    "clv_medio": 0.031
+   }
+  ],
+  "1x2_quota_massima": [
+   {
+    "soglia_vantaggio": "+0%",
+    "scommesse": 2105,
+    "roi": -0.092,
+    "clv_medio": 0.024
+   },
+   {
+    "soglia_vantaggio": "+2%",
+    "scommesse": 977,
+    "roi": -0.114,
+    "clv_medio": 0.04
+   },
+   {
+    "soglia_vantaggio": "+5%",
+    "scommesse": 375,
+    "roi": -0.186,
+    "clv_medio": 0.065
+   }
+  ],
+  "ou25_bet365": [
+   {
+    "soglia_vantaggio": "+0%",
+    "scommesse": 37,
+    "roi": -0.175,
+    "clv_medio": 0.051
+   },
+   {
+    "soglia_vantaggio": "+2%",
+    "scommesse": 17,
+    "roi": -0.088,
+    "clv_medio": 0.106
+   },
+   {
+    "soglia_vantaggio": "+5%",
+    "scommesse": 10,
+    "roi": 0.55,
+    "clv_medio": 0.153
+   }
+  ],
+  "ou25_quota_massima": [
+   {
+    "soglia_vantaggio": "+0%",
+    "scommesse": 401,
+    "roi": 0.006,
+    "clv_medio": 0.028
+   },
+   {
+    "soglia_vantaggio": "+2%",
+    "scommesse": 89,
+    "roi": 0.163,
+    "clv_medio": 0.067
+   },
+   {
+    "soglia_vantaggio": "+5%",
+    "scommesse": 32,
+    "roi": 0.42,
+    "clv_medio": 0.115
+   }
+  ]
+ },
  "per_campionato_log_loss": {
   "Serie A": {
    "modello": 0.9873,
@@ -314,5 +396,5 @@
   "da": "2024-08-15",
   "a": "2026-09-20"
  },
- "generato": "2026-09-24T06:46:05.685480+00:00"
+ "generato": "2026-09-24T06:57:26.503297+00:00"
 }
