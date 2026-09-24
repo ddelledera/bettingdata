@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS matches (
     away_team_id INTEGER NOT NULL REFERENCES teams(id),
     home_goals INTEGER,              -- NULL se la partita non è ancora giocata
     away_goals INTEGER,
+    kickoff_utc TEXT,                -- orario di inizio, UTC, "YYYY-MM-DD HH:MM:SS" (NULL se ignoto)
     UNIQUE(date, home_team_id, away_team_id)
 );
 
@@ -166,4 +167,23 @@ CREATE TABLE IF NOT EXISTS virtual_bets (
     close_fair_prob REAL,             -- ultimo prezzo giusto Pinnacle prima della partita
     close_updated_at TEXT,
     UNIQUE (match_id, selection, bookmaker)
+);
+
+-- Codici con cui le altre fonti identificano le NOSTRE partite (es. il
+-- fixtureId di OddsPapi). Il primo collegamento si fa per nome squadra e
+-- data; poi resta salvato qui e non va più indovinato.
+CREATE TABLE IF NOT EXISTS external_ids (
+    provider TEXT NOT NULL,           -- es. "oddspapi"
+    external_id TEXT NOT NULL,
+    match_id INTEGER NOT NULL REFERENCES matches(id),
+    PRIMARY KEY (provider, external_id)
+);
+
+-- Richieste fatte alle API a consumo limitato, per non sforare il piano
+-- gratuito (OddsPapi: 250 al mese).
+CREATE TABLE IF NOT EXISTS api_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    purpose TEXT NOT NULL,            -- es. "giornaliero", "chiusura"
+    called_at TEXT NOT NULL
 );
