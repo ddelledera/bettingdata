@@ -20,18 +20,33 @@ Domande a cui risponde:
   5. Conviene "avvicinare" le nostre probabilità a quelle del mercato?
      (miscela modello/mercato: quale peso dà le previsioni migliori)
 
-VERSIONE 2 — metodo per migliorare il modello senza ingannarsi:
-  - le partite valutate sono divise in due periodi. VALIDAZIONE (stagione
-    2024-25): qui si confrontano le varianti del modello e si sceglie la
-    migliore. TEST (dal 2025-26 in poi): serve SOLO a verificare, alla fine,
-    la variante scelta. Non si sceglie mai niente guardando il test,
-    altrimenti un miglioramento trovato per caso sembrerebbe vero.
-  - ogni confronto ha un intervallo di confidenza (bootstrap per settimane):
-    una differenza di log loss di pochi millesimi può essere solo rumore.
-  - varianti provate: diversi "decadimenti" (quanto contano le partite
-    recenti) e "ridge" (quanto tirare verso la media), invece dei valori
-    scelti a occhio. I tiri e tiri in porta vengono già caricati, per i
-    prossimi passi (forza delle squadre dai tiri).
+VERSIONE 3 — i nostri dati aggiungono qualcosa al prezzo di Pinnacle?
+(la versione 2 ha mostrato che regolare decadimento e ridge non serve)
+  - MODELLO A CORREZIONE: si parte dalla probabilità di Pinnacle del mattino
+    (margine tolto col metodo potenza) e una regressione logistica
+    multinomiale, molto regolarizzata, impara solo una piccola correzione:
+        log-odds finali = log-odds Pinnacle + correzione dai nostri segnali
+    Se i segnali non contengono informazione, la correzione resta ~0 e la
+    probabilità finale torna a essere quella di Pinnacle.
+  - SEGNALI, provati separatamente e poi insieme (ablation): forza delle
+    squadre da gol, da tiri totali, da tiri in porta (ciascuno: attacco e
+    difesa stimati dal passato, come Dixon-Coles), più il campionato.
+    Niente giorni di riposo: nei file mancano coppe nazionali ed europee, e
+    il riposo calcolato solo sul campionato sarebbe sbagliato.
+  - PERIODI: SVILUPPO (ago 2024 - set 2026) per scegliere segnali e
+    regolarizzazione, con validazione "a scorrimento": ogni mese la
+    correzione è allenata solo sui mesi precedenti. HOLDOUT (da ottobre
+    2026): congelato, non si guarda finché la variante non è decisa; si
+    apre una volta sola cambiando OPEN_HOLDOUT. Il vecchio "test" della
+    versione 2 ormai è stato visto e fa parte dello sviluppo.
+  - REGOLA DI ADOZIONE, decisa prima di vedere i risultati: la correzione
+    entra nell'app solo se sull'holdout (1) il log loss migliora rispetto a
+    Pinnacle con intervallo al 95% tutto sotto zero, (2) il Brier non
+    peggiora, (3) la calibrazione non peggiora, (4) il miglioramento non
+    viene da un solo campionato. CLV e ROI restano una conferma economica.
+  - COPERTURA PINNACLE: per stagione, campionato, mese e tipo di partita,
+    per capire se le partite senza Pinnacle sono diverse dalle altre. Tutti
+    i confronti usano solo le partite che hanno Pinnacle.
 
 Il risultato va in backtest_report.json, mostrato nella scheda "Performance
 del modello" della dashboard. Non tocca data.db. Gira una volta a settimana
@@ -58,17 +73,22 @@ EV_BANDS = [(0.0, 0.05), (0.05, 0.10), (0.10, 0.25), (0.25, 10.0)]
 BLEND_WEIGHTS = [0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]   # peso del modello
 REPORT_PATH = "backtest_report.json"
 
-# Divisione validazione / test (vedi sopra)
-SPLIT_DATE = date(2025, 7, 1)
-# Varianti del modello: (decadimento, ridge). La prima è quella usata oggi dall'app.
-BASE_VARIANT = (0.001, 0.5)
-VARIANTS = [BASE_VARIANT] + [(d, r) for d in (0.0005, 0.001, 0.002, 0.004)
-                              for r in (0.1, 0.5, 2.0, 5.0) if (d, r) != BASE_VARIANT]
+# --- Versione 3 --------------------------------------------------------------
+SIGNALS_FROM = date(2023, 8, 1)    # da qui calcoliamo i segnali: la stagione
+                                   # 2023-24 serve solo ad allenare la correzione
+HOLDOUT_FROM = date(2026, 10, 1)   # holdout congelato: da qui in avanti
+OPEN_HOLDOUT = False               # si mette True UNA volta, a variante decisa
+MIN_RESIDUAL_TRAIN = 600           # partite (con Pinnacle) prima di allenare la correzione
 BOOTSTRAP_REPS = 2000
-
-
-def variant_key(v):
-    return f"decadimento {v[0]:g}, ridge {v[1]:g}"
+SIGNAL_SETS = {                    # ablation: da dove viene l'eventuale informazione
+    "gol": ["gol"],
+    "tiri": ["tiri"],
+    "tiri in porta": ["porta"],
+    "gol + tiri + tiri in porta": ["gol", "tiri", "porta"],
+    "tutti + campionato": ["gol", "tiri", "porta", "+camp"],
+    "tutti + campionato × segnali": ["gol", "tiri", "porta", "+camp", "+campxseg"],
+}
+L2_GRID = [0.003, 0.03, 0.3]       # regolarizzazione: più alta = correzione più vicina a zero
 
 
 # ---------------------------------------------------------------------------
@@ -132,15 +152,6 @@ def devig_power(values):
     return [x ** k for x in inv]
 
 
-def col_num(row, name):
-    """Un numero qualsiasi dal file (es. tiri), None se manca."""
-    try:
-        v = float(row.get(name))
-    except (TypeError, ValueError):
-        return None
-    return None if math.isnan(v) else v
-
-
 def col(row, name):
     v = row.get(name)
     try:
@@ -160,22 +171,71 @@ def month_starts(start, end):
         d = date(d.year + (d.month == 12), d.month % 12 + 1, 1)
 
 
+class PoissonStrength:
+    """Forza in attacco e difesa di ogni squadra per una grandezza "a
+    conteggio" (tiri, tiri in porta), come Dixon-Coles fa per i gol:
+    log(attese casa) = attacco_casa - difesa_ospite + fattore campo.
+    Con lo stesso decadimento e la stessa penalità ridge del modello gol."""
+
+    def __init__(self, decay_rate=0.001, ridge=0.5):
+        self.decay_rate, self.ridge = decay_rate, ridge
+
+    def fit(self, rows):
+        from scipy.optimize import minimize
+        self.teams = sorted({r[0] for r in rows} | {r[1] for r in rows})
+        idx = {t: i for i, t in enumerate(self.teams)}
+        n = len(self.teams)
+        hi = np.array([idx[r[0]] for r in rows]); ai = np.array([idx[r[1]] for r in rows])
+        hk = np.array([r[2] for r in rows], float); ak = np.array([r[3] for r in rows], float)
+        w = np.exp(-self.decay_rate * np.array([r[4] for r in rows], float))
+        mean = max(float(np.average(np.concatenate([hk, ak]))), 0.1)
+
+        def obj(x):
+            att, de, ha, mu = x[:n], x[n:2 * n], x[2 * n], x[2 * n + 1]
+            lh = np.exp(np.clip(mu + att[hi] - de[ai] + ha, -10, 6))
+            la = np.exp(np.clip(mu + att[ai] - de[hi], -10, 6))
+            nll = np.sum(w * (lh - hk * np.log(lh))) + np.sum(w * (la - ak * np.log(la)))
+            rh, ra = w * (lh - hk), w * (la - ak)
+            g = np.zeros_like(x)
+            np.add.at(g, hi, rh); np.add.at(g, n + ai, -rh)
+            np.add.at(g, ai, ra); np.add.at(g, n + hi, -ra)
+            g[2 * n] = rh.sum(); g[2 * n + 1] = rh.sum() + ra.sum()
+            reg = x[:2 * n]
+            g[:2 * n] += 2 * self.ridge * reg
+            return nll + self.ridge * np.sum(reg ** 2), g
+
+        x0 = np.zeros(2 * n + 2); x0[-1] = math.log(mean)
+        res = minimize(obj, x0, jac=True, method="L-BFGS-B", options={"maxiter": 3000})
+        self.att = dict(zip(self.teams, res.x[:n])); self.de = dict(zip(self.teams, res.x[n:2 * n]))
+        self.ha = res.x[2 * n]
+        return self
+
+    def diff(self, home, away):
+        """log(attese casa) - log(attese ospite): chi "produce" di più."""
+        return (self.att[home] - self.de[away] + self.ha) - (self.att[away] - self.de[home])
+
+
 def walk_forward(df, league):
     records = []
-    for m_start in month_starts(TEST_FROM, date.today()):
+    for m_start in month_starts(SIGNALS_FROM, date.today()):
         m_end = date(m_start.year + (m_start.month == 12), m_start.month % 12 + 1, 1)
         train = df[df["Date"].dt.date < m_start]
         test = df[(df["Date"].dt.date >= m_start) & (df["Date"].dt.date < m_end)]
         if test.empty or len(train) < 300:
             continue
-        train_matches = [
+        model = DixonColesModel().fit([
             {"home_team": r.HomeTeam, "away_team": r.AwayTeam,
              "home_goals": int(r.FTHG), "away_goals": int(r.FTAG),
              "days_ago": (m_start - r.Date.date()).days}
-            for r in train.itertuples()]
-        models = {v: DixonColesModel(decay_rate=v[0], ridge=v[1]).fit(train_matches)
-                  for v in VARIANTS}
-        model = models[BASE_VARIANT]
+            for r in train.itertuples()])
+        count_models = {}
+        for name, (hc, ac) in {"tiri": ("HS", "AS"), "porta": ("HST", "AST")}.items():
+            rows = [(r["HomeTeam"], r["AwayTeam"], float(r[hc]), float(r[ac]),
+                     (m_start - r["Date"].date()).days)
+                    for _, r in train.iterrows()
+                    if hc in train and pd.notna(r.get(hc)) and pd.notna(r.get(ac))]
+            if len(rows) >= 300:
+                count_models[name] = PoissonStrength().fit(rows)
         for _, r in test.iterrows():
             h, a = r["HomeTeam"], r["AwayTeam"]
             if h not in model.teams or a not in model.teams:
@@ -183,12 +243,17 @@ def walk_forward(df, league):
             ph, pd_, pa = model.predict_match(h, a)
             goals = model.market_probabilities(h, a)
             hg, ag = int(r["FTHG"]), int(r["FTAG"])
+            lam_h, lam_a = model.expected_goals(h, a)
             d = r["Date"].date()
+            sig = {"gol": math.log(lam_h) - math.log(lam_a)}
+            for name, cm in count_models.items():
+                if h in cm.att and a in cm.att:
+                    sig[name] = cm.diff(h, a)
             records.append({
                 "league": league, "date": d.isoformat(),
-                "period": "validazione" if d < SPLIT_DATE else "test",
-                "pv": {variant_key(v): list(m.predict_match(h, a)) for v, m in models.items()},
-                "shots": [col_num(r, c) for c in ("HS", "AS", "HST", "AST")],
+                "period": ("prima" if d < TEST_FROM else
+                           "sviluppo" if d < HOLDOUT_FROM else "holdout"),
+                "sig": sig,
                 "p": [ph, pd_, pa], "p_over25": goals["prob_over25"], "p_btts": goals["prob_btts"],
                 "result": 0 if hg > ag else (1 if hg == ag else 2),
                 "over25": int(hg + ag >= 3), "btts": int(hg > 0 and ag > 0),
@@ -309,17 +374,106 @@ def sharp_vs_soft(records, odds_key, fair_key, close_key, outcome_fn, n_sel, by_
     return out
 
 
-def paired_comparison(records, prob_a, prob_b, reps=BOOTSTRAP_REPS, seed=0):
-    """Differenza di log loss A - B partita per partita (negativa = A è migliore),
-    con intervallo al 95% ricampionando settimane intere: le partite della
-    stessa giornata non sono indipendenti tra loro."""
+# ---------------------------------------------------------------------------
+# Versione 3: modello a correzione su Pinnacle
+# ---------------------------------------------------------------------------
+LEAGUE_NAMES = list(LEAGUES.values())
+
+
+def features(r, spec):
+    """Vettore dei segnali di una partita per un insieme di segnali."""
+    base = [s for s in spec if not s.startswith("+")]
+    x = [r["sig"].get(s) for s in base]
+    if any(v is None for v in x):
+        return None
+    if "+camp" in spec:
+        dummies = [1.0 if r["league"] == l else 0.0 for l in LEAGUE_NAMES[1:]]
+        x = x + dummies
+        if "+campxseg" in spec:
+            x = x + [d * v for d in dummies for v in x[:len(base)]]
+    return x
+
+
+def fit_offset_mnl(P0, X, y, l2):
+    """Logistica multinomiale con Pinnacle come offset:
+        logit_k = log P0_k + b_k + x·w_k   (pareggio = riferimento, b=w=0)
+    Penalità l2 su tutti i coefficienti: senza informazione -> Pinnacle."""
+    from scipy.optimize import minimize
+    n, d = X.shape
+    L0 = np.log(np.clip(P0, 1e-9, 1))
+    Y = np.eye(3)[y]
+
+    def obj(t):
+        B = t.reshape(2, d + 1)                       # righe: casa, ospite
+        z = L0.copy()
+        z[:, 0] += B[0, 0] + X @ B[0, 1:]
+        z[:, 2] += B[1, 0] + X @ B[1, 1:]
+        z -= z.max(axis=1, keepdims=True)
+        P = np.exp(z); P /= P.sum(axis=1, keepdims=True)
+        nll = -np.sum(Y * np.log(np.clip(P, 1e-12, 1))) / n
+        G = (P - Y) / n
+        g = np.concatenate([[G[:, 0].sum()], X.T @ G[:, 0], [G[:, 2].sum()], X.T @ G[:, 2]])
+        return nll + l2 * np.sum(t ** 2), g + 2 * l2 * t
+
+    res = minimize(obj, np.zeros(2 * (d + 1)), jac=True, method="L-BFGS-B")
+    return res.x.reshape(2, d + 1)
+
+
+def apply_offset_mnl(B, P0, X):
+    z = np.log(np.clip(P0, 1e-9, 1)).copy()
+    z[:, 0] += B[0, 0] + X @ B[0, 1:]
+    z[:, 2] += B[1, 0] + X @ B[1, 1:]
+    z -= z.max(axis=1, keepdims=True)
+    P = np.exp(z)
+    return P / P.sum(axis=1, keepdims=True)
+
+
+def residual_walk_forward(records):
+    """Per ogni variante (segnali × regolarizzazione) e ogni mese: allena la
+    correzione solo sulle partite dei mesi precedenti e la applica al mese.
+    Scrive le probabilità in r["pr"][nome variante]."""
+    usable = sorted([r for r in records if r.get("pin_pre_pow")], key=lambda r: r["date"])
+    months = sorted({r["date"][:7] for r in usable})
+    for set_name, spec in SIGNAL_SETS.items():
+        for l2 in L2_GRID:
+            key = f"{set_name} (reg. {l2:g})"
+            for m in months:
+                train = [r for r in usable if r["date"][:7] < m]
+                test = [r for r in usable if r["date"][:7] == m]
+                tr = [(r, features(r, spec)) for r in train]
+                tr = [(r, x) for r, x in tr if x is not None]
+                if len(tr) < MIN_RESIDUAL_TRAIN:
+                    continue
+                X = np.array([x for _, x in tr])
+                mu, sd = X.mean(axis=0), X.std(axis=0)
+                sd[sd == 0] = 1
+                B = fit_offset_mnl(np.array([r["pin_pre_pow"] for r, _ in tr]), (X - mu) / sd,
+                                   np.array([r["result"] for r, _ in tr]), l2)
+                te = [(r, features(r, spec)) for r in test]
+                te = [(r, x) for r, x in te if x is not None]
+                if not te:
+                    continue
+                P = apply_offset_mnl(B, np.array([r["pin_pre_pow"] for r, _ in te]),
+                                     (np.array([x for _, x in te]) - mu) / sd)
+                for (r, _), p in zip(te, P):
+                    r.setdefault("pr", {})[key] = [float(v) for v in p]
+    return [f"{s} (reg. {l2:g})" for s in SIGNAL_SETS for l2 in L2_GRID]
+
+
+def paired_comparison(records, prob_a, prob_b, metric="log_loss", reps=BOOTSTRAP_REPS, seed=0):
+    """Differenza A - B partita per partita (negativa = A migliore), con
+    intervallo al 95% ricampionando settimane intere (le partite della stessa
+    giornata non sono indipendenti)."""
     diffs, weeks = [], []
     for r in records:
         pa, pb = prob_a(r), prob_b(r)
         if pa is None or pb is None:
             continue
         o = r["result"]
-        diffs.append(-math.log(max(pa[o], 1e-12)) + math.log(max(pb[o], 1e-12)))
+        if metric == "log_loss":
+            diffs.append(-math.log(max(pa[o], 1e-12)) + math.log(max(pb[o], 1e-12)))
+        else:
+            diffs.append(sum((pa[k] - (k == o)) ** 2 - (pb[k] - (k == o)) ** 2 for k in range(3)))
         y, w, _ = date.fromisoformat(r["date"]).isocalendar()
         weeks.append((y, w))
     if len(diffs) < 50:
@@ -327,67 +481,117 @@ def paired_comparison(records, prob_a, prob_b, reps=BOOTSTRAP_REPS, seed=0):
     diffs = np.array(diffs)
     ids = {w: i for i, w in enumerate(sorted(set(weeks)))}
     wk = np.array([ids[w] for w in weeks])
-    sums = np.bincount(wk, weights=diffs)
-    counts = np.bincount(wk)
-    rng = np.random.default_rng(seed)
-    pick = rng.integers(0, len(sums), size=(reps, len(sums)))
+    sums, counts = np.bincount(wk, weights=diffs), np.bincount(wk)
+    pick = np.random.default_rng(seed).integers(0, len(sums), size=(reps, len(sums)))
     boot = sums[pick].sum(axis=1) / counts[pick].sum(axis=1)
     lo, hi = np.percentile(boot, [2.5, 97.5])
-    return {"partite": int(len(diffs)), "differenza": round(float(diffs.mean()), 4),
-            "da": round(float(lo), 4), "a": round(float(hi), 4),
+    return {"partite": int(len(diffs)), "differenza": round(float(diffs.mean()), 5),
+            "da": round(float(lo), 5), "a": round(float(hi), 5),
             "significativa": bool(hi < 0 or lo > 0)}
 
 
-def summarize_v2(records):
-    """Metodo validazione/test: sceglie la variante sulla validazione e la
-    verifica sul test, con confronti statistici contro la base e Pinnacle."""
-    # stesse partite per tutti: servono anche le quote Pinnacle
-    rs = [r for r in records if r["pin_pre"] and r["pin_close"]]
-    per = {p: [r for r in rs if r["period"] == p] for p in ("validazione", "test")}
-    base_key = variant_key(BASE_VARIANT)
+def calibration_error(recs, prob):
+    """Errore medio di calibrazione (ECE) sui tre esiti, a fasce del 10%."""
+    pairs = [(prob(r)[k], int(r["result"] == k)) for r in recs for k in range(3)]
+    tot, err = len(pairs), 0.0
+    for i in range(10):
+        sel = [(p, y) for p, y in pairs if i / 10 <= p < (i + 1) / 10 or (i == 9 and p == 1)]
+        if sel:
+            err += len(sel) / tot * abs(np.mean([p for p, _ in sel]) - np.mean([y for _, y in sel]))
+    return float(err)
 
-    varianti = []
-    for v in VARIANTS:
-        k = variant_key(v)
-        row = {"variante": k, "base": v == BASE_VARIANT}
-        for p, recs in per.items():
-            row[p] = (round(log_loss([r["pv"][k] for r in recs], [r["result"] for r in recs]), 4)
-                      if recs else None)
-        varianti.append(row)
-    validi = [v for v in varianti if v["validazione"] is not None]
-    scelta = min(validi, key=lambda v: v["validazione"])["variante"] if validi else base_key
 
-    riferimenti = {}
-    for p, recs in per.items():
-        out = [r["result"] for r in recs]
-        riferimenti[p] = {
-            "partite": len(recs),
-            "pinnacle_prima": round(log_loss([r["pin_pre"] for r in recs], out), 4) if recs else None,
-            "pinnacle_chiusura": round(log_loss([r["pin_close"] for r in recs], out), 4) if recs else None,
-        }
-
-    m = lambda k: (lambda r: r["pv"][k])
-    confronti = []
-    def add(nome, periodo, fa, fb):
-        c = paired_comparison(per[periodo], fa, fb)
+def adoption_check(recs, cand, base):
+    """La regola di adozione (decisa prima di vedere i risultati)."""
+    ll = paired_comparison(recs, cand, base)
+    br = paired_comparison(recs, cand, base, metric="brier")
+    if not ll or not br:
+        return None
+    ece_c, ece_b = calibration_error(recs, cand), calibration_error(recs, base)
+    per_lega = {}
+    for l in LEAGUE_NAMES:
+        c = paired_comparison([r for r in recs if r["league"] == l], cand, base, reps=200)
         if c:
-            confronti.append({"confronto": nome, "periodo": periodo, **c})
-    add(f"scelta ({scelta}) contro base", "validazione", m(scelta), m(base_key))
-    add(f"scelta ({scelta}) contro base", "test", m(scelta), m(base_key))
-    add("scelta contro Pinnacle prima della partita", "test", m(scelta), lambda r: r["pin_pre"])
-    add("base contro Pinnacle prima della partita", "test", m(base_key), lambda r: r["pin_pre"])
-    add("Pinnacle prima contro Pinnacle chiusura", "test",
-        lambda r: r["pin_pre"], lambda r: r["pin_close"])
+            per_lega[l] = c["differenza"]
+    migliori = sorted(per_lega, key=per_lega.get)
+    senza_migliore = paired_comparison([r for r in recs if not migliori or r["league"] != migliori[0]],
+                                       cand, base, reps=200)
+    regole = {
+        "log loss migliore, intervallo tutto sotto zero": ll["a"] < 0,
+        "Brier non peggiora": br["differenza"] <= 0,
+        "calibrazione non peggiora": ece_c <= ece_b + 0.005,
+        "migliora in almeno 3 campionati su 5": sum(v < 0 for v in per_lega.values()) >= 3,
+        "migliora anche senza il campionato migliore": bool(senza_migliore and senza_migliore["differenza"] < 0),
+    }
+    return {"log_loss": ll, "brier": br,
+            "calibrazione": {"candidato": round(ece_c, 4), "pinnacle": round(ece_b, 4)},
+            "per_campionato": {k: round(v, 5) for k, v in per_lega.items()},
+            "regole": regole, "adottare": all(regole.values())}
 
-    con_tiri = sum(1 for r in records if r.get("shots") and all(x is not None for x in r["shots"]))
+
+def pinnacle_coverage(records):
+    """Quante partite hanno le quote Pinnacle (mattino e chiusura), e se
+    quelle senza sono diverse dalle altre (es. più squilibrate)."""
+    def fav(r):
+        p = devig(r["odds_avg"]) if r.get("odds_avg") and all(r["odds_avg"]) else None
+        return max(p) if p else None
+    has = lambda r: bool(r.get("pin_pre") and r.get("pin_close"))
+
+    def table(keyf):
+        groups = {}
+        for r in records:
+            groups.setdefault(keyf(r), []).append(r)
+        return [{"gruppo": k, "partite": len(v), "con_pinnacle": sum(map(has, v)),
+                 "copertura": round(sum(map(has, v)) / len(v), 3)} for k, v in sorted(groups.items())]
+
+    def mean_fav(rs):
+        v = [fav(r) for r in rs if fav(r) is not None]
+        return round(float(np.mean(v)), 3) if v else None
+    con = [r for r in records if has(r)]
+    senza = [r for r in records if not has(r)]
+    season = lambda r: (f"{int(r['date'][:4]) - (r['date'][5:7] < '07')}-"
+                        f"{str(int(r['date'][:4]) - (r['date'][5:7] < '07') + 1)[-2:]}")
+    return {"per_stagione": table(season), "per_campionato": table(lambda r: r["league"]),
+            "per_mese": table(lambda r: r["date"][:7]),
+            "favorita_media": {"con_pinnacle": mean_fav(con), "senza_pinnacle": mean_fav(senza)}}
+
+
+def summarize_v3(records):
+    keys = residual_walk_forward(records)
+    pin = lambda r: r.get("pin_pre_pow")
+    dev = [r for r in records if r["period"] == "sviluppo" and r.get("pin_pre_pow")]
+    # stesse partite per tutte le varianti: quelle dove esistono tutte
+    dev_all = [r for r in dev if all(k in r.get("pr", {}) for k in keys)]
+    out = [r["result"] for r in dev_all]
+    varianti = []
+    for k in keys:
+        c = paired_comparison(dev_all, lambda r, k=k: r["pr"][k], pin)
+        varianti.append({"variante": k,
+                         "log_loss": round(log_loss([r["pr"][k] for r in dev_all], out), 5) if dev_all else None,
+                         "contro_pinnacle": c})
+    scelta = min(varianti, key=lambda v: v["log_loss"])["variante"] if dev_all else None
+    ref = {
+        "partite": len(dev_all),
+        "pinnacle_mattino": round(log_loss([r["pin_pre_pow"] for r in dev_all], out), 5) if dev_all else None,
+        "pinnacle_chiusura": round(log_loss([r["pin_close_pow"] for r in dev_all
+                                             if r.get("pin_close_pow")],
+                                            [r["result"] for r in dev_all if r.get("pin_close_pow")]), 5)
+                             if dev_all else None,
+        "dixon_coles": round(log_loss([r["p"] for r in dev_all], out), 5) if dev_all else None,
+    }
+    anteprima = (adoption_check(dev_all, lambda r: r["pr"][scelta], pin) if scelta else None)
+
+    hold = [r for r in records if r["period"] == "holdout" and r.get("pin_pre_pow")
+            and scelta and scelta in r.get("pr", {})]
+    holdout = {"aperto": OPEN_HOLDOUT, "da": HOLDOUT_FROM.isoformat(), "partite_con_pinnacle": len(hold)}
+    if OPEN_HOLDOUT and hold:
+        holdout["esito"] = adoption_check(hold, lambda r: r["pr"][scelta], pin)
     return {
-        "divisione": {"validazione": f"fino al {SPLIT_DATE - timedelta(days=1):%d/%m/%Y}",
-                      "test": f"dal {SPLIT_DATE:%d/%m/%Y}"},
-        "varianti": varianti,
-        "variante_scelta": scelta,
-        "riferimenti": riferimenti,
-        "confronti": confronti,
-        "copertura_tiri": round(con_tiri / len(records), 3) if records else 0,
+        "periodo_sviluppo": {"da": TEST_FROM.isoformat(),
+                             "a": (HOLDOUT_FROM - timedelta(days=1)).isoformat()},
+        "riferimenti": ref, "varianti": varianti, "variante_scelta": scelta,
+        "anteprima_regola_sviluppo": anteprima, "holdout": holdout,
+        "copertura_pinnacle": pinnacle_coverage([r for r in records if r["period"] != "prima"]),
     }
 
 
@@ -462,22 +666,26 @@ def summarize(records):
 
 
 def main():
-    all_records, per_league = [], {}
+    everything, per_league = [], {}
     for code, league in LEAGUES.items():
         print(f"{league}: scarico lo storico e simulo mese per mese...")
         df = load_league(code)
         if df.empty:
             continue
         recs = walk_forward(df, league)
-        all_records += recs
-        if recs:
-            per_league[league] = summarize(recs)["1x2"]["log_loss"]
+        everything += recs
+        legacy = [r for r in recs if r["period"] != "prima"]
+        if legacy:
+            per_league[league] = summarize(legacy)["1x2"]["log_loss"]
+    # il report "classico" resta sullo stesso periodo di prima (da TEST_FROM)
+    all_records = [r for r in everything if r["period"] != "prima"]
     if not all_records:
         print("Nessuna partita valutata: niente report.")
         return
     report = summarize(all_records)
     report["per_campionato_log_loss"] = per_league
-    report["v2"] = summarize_v2(all_records)
+    print("\nVersione 3: alleno il modello a correzione mese per mese...")
+    report["v3"] = summarize_v3(everything)
     report["periodo"] = {"da": min(r["date"] for r in all_records),
                          "a": max(r["date"] for r in all_records)}
     report["generato"] = datetime.now(timezone.utc).isoformat()
@@ -486,16 +694,28 @@ def main():
     print(json.dumps({k: report[k] for k in ("partite_valutate", "periodo")}, ensure_ascii=False))
     print("log loss 1X2:", report["1x2"]["log_loss"])
     print("miglior peso del modello nella miscela:", report["1x2"]["peso_modello_migliore"])
-    v2 = report["v2"]
-    print(f"\nVERSIONE 2 — validazione {v2['divisione']['validazione']}, test {v2['divisione']['test']}")
-    print("riferimenti Pinnacle:", v2["riferimenti"])
-    for v in v2["varianti"]:
-        print(f"  {v['variante']:<32} validazione {v['validazione']}  test {v['test']}"
-              + ("   <- base" if v["base"] else "") + ("   <- scelta" if v["variante"] == v2["variante_scelta"] else ""))
-    for c in v2["confronti"]:
-        print(f"  {c['confronto']} [{c['periodo']}]: {c['differenza']:+.4f} "
-              f"(95%: {c['da']:+.4f} / {c['a']:+.4f}){'  SIGNIFICATIVA' if c['significativa'] else ''}")
-    print("partite con i tiri nel file:", v2["copertura_tiri"])
+    v3 = report["v3"]
+    print(f"\nVERSIONE 3 — sviluppo {v3['periodo_sviluppo']['da']} / {v3['periodo_sviluppo']['a']}")
+    print("riferimenti (stesse partite):", v3["riferimenti"])
+    print("varianti del modello a correzione (differenza di log loss contro Pinnacle mattino):")
+    for v in v3["varianti"]:
+        c = v["contro_pinnacle"]
+        print(f"  {v['variante']:<48} {v['log_loss']}  "
+              + (f"{c['differenza']:+.5f} (95%: {c['da']:+.5f} / {c['a']:+.5f})"
+                 + ("  SIGNIFICATIVA" if c["significativa"] else "") if c else "")
+              + ("   <- scelta" if v["variante"] == v3["variante_scelta"] else ""))
+    a = v3["anteprima_regola_sviluppo"]
+    if a:
+        print("regola di adozione sullo SVILUPPO (solo indicativa, non decide niente):")
+        for k, ok in a["regole"].items():
+            print(f"  {'OK ' if ok else 'NO '} {k}")
+        print("  per campionato:", a["per_campionato"], " calibrazione:", a["calibrazione"])
+    print("holdout:", v3["holdout"])
+    cov = v3["copertura_pinnacle"]
+    print("copertura Pinnacle per stagione:", [(g["gruppo"], g["copertura"]) for g in cov["per_stagione"]])
+    print("copertura Pinnacle per campionato:", [(g["gruppo"], g["copertura"]) for g in cov["per_campionato"]])
+    print("copertura Pinnacle per mese:", [(g["gruppo"], g["copertura"]) for g in cov["per_mese"]])
+    print("probabilità media della favorita, con / senza Pinnacle:", cov["favorita_media"])
     print("scommesse 1X2 per fascia di EV:")
     for b in report["1x2"]["scommesse_modello"]:
         print("  ", b)
