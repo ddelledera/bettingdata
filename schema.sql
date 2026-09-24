@@ -187,3 +187,12 @@ CREATE TABLE IF NOT EXISTS api_calls (
     purpose TEXT NOT NULL,            -- es. "giornaliero", "chiusura"
     called_at TEXT NOT NULL
 );
+
+-- Esito del controllo di salute di ogni giro giornaliero (health_check.py):
+-- una riga per errore o avviso, oppure una riga "OK" se tutto è a posto.
+CREATE TABLE IF NOT EXISTS health_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_at TEXT NOT NULL,
+    level TEXT NOT NULL,              -- "ERRORE", "AVVISO" oppure "OK"
+    message TEXT NOT NULL
+);

@@ -246,13 +246,6 @@ h3 { color: var(--inchiostro); }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<div class="app-header">
-    <h1>⚽ Le mie previsioni calcio</h1>
-    <p>Le quote dei bookmaker italiani confrontate con il prezzo giusto di Pinnacle.</p>
-</div>
-""", unsafe_allow_html=True)
-
 
 def get_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -787,6 +780,45 @@ def compute_opportunities(conn, matches_df, min_ev, markets=None):
 
 
 conn = get_connection()
+
+
+def last_health(conn):
+    """Esito dell'ultimo controllo di salute del giro giornaliero:
+    (quando, [(livello, messaggio), ...]) oppure (None, [])."""
+    try:
+        run_at = conn.execute("SELECT MAX(run_at) FROM health_checks").fetchone()[0]
+        if not run_at:
+            return None, []
+        return run_at, conn.execute("SELECT level, message FROM health_checks WHERE run_at = ? "
+                                    "ORDER BY level DESC", (run_at,)).fetchall()
+    except sqlite3.Error:
+        return None, []
+
+
+def last_update_label(conn):
+    """'aggiornate gio 24 set, 11:13' in ora italiana, dall'ultima quota salvata."""
+    try:
+        t = conn.execute("SELECT MAX(snapshot_time) FROM odds_snapshots").fetchone()[0]
+        t = datetime.fromisoformat(t).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        return "Quote aggiornate " + fmt_when(t[:10], t)
+    except (sqlite3.Error, TypeError, ValueError):
+        return ""
+
+
+st.markdown(f"""
+<div class="app-header">
+    <h1>⚽ Le mie previsioni calcio</h1>
+    <p>Le quote dei bookmaker italiani confrontate con il prezzo giusto di Pinnacle.
+       {last_update_label(conn)}.</p>
+</div>
+""", unsafe_allow_html=True)
+
+health_at, health_rows = last_health(conn)
+health_errors = [m for lvl, m in health_rows if lvl == "ERRORE"]
+if health_errors:
+    st.error("L'ultimo aggiornamento dei dati ha avuto problemi, quindi alcune quote o "
+             "opportunità potrebbero mancare o essere vecchie:\n\n"
+             + "\n".join(f"- {m}" for m in health_errors))
 
 try:
     matches_df = load_upcoming_with_predictions(conn)
@@ -1563,6 +1595,23 @@ with tab_analisi:
                     + f" su {n_app:,} scommesse. ".replace(",", ".")
                     + "Attenzione: usa la quota migliore tra ~40 bookmaker, più generosa dei 4 "
                       "italiani. È la prova dal vivo a dire se regge anche da noi.")
+
+        st.write("")
+        st.markdown("**Stato dell'ultimo aggiornamento dei dati**")
+        if health_at is None:
+            st.caption("Nessun controllo ancora registrato: il primo arriva col prossimo giro "
+                       "giornaliero.")
+        else:
+            quando = fmt_when(health_at[:10], datetime.fromisoformat(health_at)
+                              .strftime("%Y-%m-%d %H:%M:%S"))
+            if not any(lvl in ("ERRORE", "AVVISO") for lvl, _ in health_rows):
+                st.caption(f"🟢 {quando}: tutti i controlli superati (quote di ogni bookmaker, "
+                           "Pinnacle, abbinamenti, previsioni, marcatori).")
+            else:
+                st.caption(f"Controllo del {quando}:")
+                for lvl, msg in health_rows:
+                    if lvl in ("ERRORE", "AVVISO"):
+                        st.caption(("🔴 " if lvl == "ERRORE" else "🟡 ") + msg)
 
     # --- Prova dal vivo ---------------------------------------------------
     with sub_live:

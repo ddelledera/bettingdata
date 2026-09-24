@@ -35,6 +35,7 @@ import requests
 
 from db_utils import init_db
 from markets import market_of, fair_probabilities
+import run_stats
 
 DB_PATH = "data.db"
 API_KEY = os.environ.get("ODDSPAPI_KEY", "")
@@ -394,14 +395,17 @@ def main():
 
     books = list(ITALIAN_BOOKMAKERS.items()) + [REFERENCE_BOOKMAKER]
     responses = {}
+    book_stats = {}   # per il controllo di salute (health_check.py)
     for slug, label in books:
         print(f"Scarico quote {label}...")
         try:
             data = api_get("/odds-by-tournaments", tournamentIds=ids,
                            bookmaker=slug, oddsFormat="decimal")
             responses[slug] = data if isinstance(data, list) else []
+            book_stats[label] = {"ok": True, "fixtures": len(responses[slug]), "saved": 0}
         except requests.RequestException as e:
             print(f"  ERRORE su {label}: {e} — salto questo bookmaker")
+            book_stats[label] = {"ok": False, "error": str(e)[:200], "fixtures": 0, "saved": 0}
 
     needed = {int(fx[k]) for fxs in responses.values() for fx in fxs
               for k in ("participant1Id", "participant2Id") if fx.get(k)}
@@ -423,7 +427,7 @@ def main():
             away = names.get(int(fx["participant2Id"]), "?")
             match_id = match_id_for_fixture(cur, fx, league, home, away)
             if match_id is None:
-                unmatched.add(f"{league}: {home} - {away} ({fx['startTime'][:10]})")
+                unmatched.add((league, home, away, fx["startTime"][:10]))
                 continue
             table = "reference_odds" if slug == REFERENCE_BOOKMAKER[0] else "odds_snapshots"
             run_prices.setdefault(match_id, {})[label] = prices
@@ -437,6 +441,7 @@ def main():
                                  find_player_id(cur, match_id, player_name), odds, snapshot_time))
                 scorer_rows += len(scorers)
                 scorer_matches += bool(scorers)
+        book_stats[label]["saved"] = saved
         print(f"  -> {label}: quote salvate per {saved} partite"
               + (f", marcatori per {scorer_matches} partite ({scorer_rows} giocatori)"
                  if scorer_matches else ""))
@@ -445,14 +450,18 @@ def main():
     conn.commit()
     save_api_calls(conn)
     conn.close()
+    run_stats.record("quote", {
+        "snapshot_time": snapshot_time, "bookmaker": book_stats,
+        "non_abbinate": [{"campionato": l, "casa": h, "trasferta": a, "data": d}
+                         for l, h, a, d in sorted(unmatched)]})
 
     if unmatched:
         # Normale per le partite oltre la finestra di fetch_fixtures.py (21
         # giorni). Se invece compare una partita vicina, è un nome squadra
         # troppo diverso: va aggiunto in team_utils.py.
         print(f"\nPartite con quote ma non trovate nel database ({len(unmatched)}):")
-        for u in sorted(unmatched):
-            print(f"  {u}")
+        for league, home, away, d in sorted(unmatched):
+            print(f"  {league}: {home} - {away} ({d})")
 
 
 if __name__ == "__main__":

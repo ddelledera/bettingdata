@@ -18,6 +18,7 @@ import requests
 from datetime import date, timedelta
 from team_utils import get_or_create_team
 from team_matching import resolve_team, repair_team_names, EUROPEAN
+import run_stats
 
 DB_PATH = "data.db"
 API_KEY = os.environ.get("FOOTBALL_DATA_API_KEY", "")
@@ -95,7 +96,7 @@ def load_into_db(matches, league_name, conn):
         # il modello non potrà prevedere queste partite: nome da aggiungere
         # in team_utils.py (NORMALIZE_MAP)
         print(f"  ATTENZIONE, squadre non riconosciute: {sorted(unresolved)}")
-    return inserted
+    return inserted, sorted(unresolved)
 
 
 def main():
@@ -105,11 +106,16 @@ def main():
     # o di The Odds API invece di quello dello storico
     repair_team_names(conn, list(COMPETITION_CODES.values()) + list(EUROPEAN))
 
+    per_league, unresolved = {}, {}
     for code, league_name in COMPETITION_CODES.items():
         print(f"Controllo partite in arrivo: {league_name}...")
         matches = fetch_upcoming(code)
-        n = load_into_db(matches, league_name, conn)
+        n, missing = load_into_db(matches, league_name, conn)
+        per_league[league_name] = n
+        if missing:
+            unresolved[league_name] = missing
         print(f"  -> {n} partite in programma trovate")
+    run_stats.record("partite", {"per_campionato": per_league, "non_riconosciute": unresolved})
 
     conn.close()
 
