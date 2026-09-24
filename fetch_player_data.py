@@ -50,7 +50,9 @@ CUPS = {"champions league": "Champions League", "europa league": "Europa League"
         "conference league": "Conference League"}
 HISTORY_FROM = "2025-07-01"   # stagione scorsa + stagione in corso
 MAX_EVENTS_PER_RUN = 700      # 2 richieste ciascuna: ~1.400 per esecuzione
-MAX_BACKFILL_PER_RUN = 1300   # partite già scaricate a cui aggiungere rigori e squadra
+# partite già scaricate a cui aggiungere rigori e squadra, per giro (il workflow
+# "Recupera rigori BSD" lo alza per fare tutto in una volta)
+MAX_BACKFILL_PER_RUN = int(os.environ.get("BSD_BACKFILL_MAX", "1300"))
 
 session = requests.Session()
 session.headers["Authorization"] = f"Token {API_KEY}"
