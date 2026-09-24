@@ -34,7 +34,7 @@ from datetime import date, datetime, timedelta, timezone
 import requests
 
 from db_utils import init_db
-from markets import market_of
+from markets import market_of, fair_probabilities
 
 DB_PATH = "data.db"
 API_KEY = os.environ.get("ODDSPAPI_KEY", "")
@@ -264,6 +264,51 @@ def find_player_id(cur, match_id, name):
     return None
 
 
+# ---------------------------------------------------------------------------
+# SCOMMESSE VIRTUALI: la prova dal vivo, senza rischiare soldi.
+# Ogni volta che una quota italiana supera il prezzo giusto di Pinnacle
+# (di almeno EDGE_MIN) (con quota non oltre MAX_ODDS, dove il backtest ha dato
+# risultati sensati), la registriamo come se l'avessimo giocata. Nelle
+# esecuzioni successive, fino al giorno della partita, aggiorniamo il prezzo
+# giusto di Pinnacle: l'ultimo valore fa da "chiusura" per misurare il CLV.
+# ---------------------------------------------------------------------------
+EDGE_MIN = 0.0    # registriamo anche i vantaggi piccoli: più dati per misurare
+                  # il CLV, e nell'analisi si possono sempre dividere per soglia
+MAX_ODDS = 5.0
+
+
+def record_virtual_bets(cur, run_prices, snapshot_time):
+    new = 0
+    for match_id, by_book in run_prices.items():
+        pin = by_book.get(REFERENCE_BOOKMAKER[1])
+        fair = fair_probabilities(pin) if pin else {}
+        if not fair:
+            continue
+        # aggiorna la "chiusura" delle scommesse già registrate (partita non iniziata)
+        for selection, p in fair.items():
+            cur.execute("""UPDATE virtual_bets SET close_fair_prob = ?, close_updated_at = ?
+                           WHERE match_id = ? AND selection = ? AND match_id IN (
+                               SELECT id FROM matches WHERE date >= date('now')
+                               AND home_goals IS NULL)""",
+                        (p, snapshot_time, match_id, selection))
+        for book, prices in by_book.items():
+            if book == REFERENCE_BOOKMAKER[1]:
+                continue
+            for selection, odds in prices.items():
+                p = fair.get(selection)
+                if p is None or odds > MAX_ODDS or odds * p - 1 < EDGE_MIN:
+                    continue
+                cur.execute("""INSERT OR IGNORE INTO virtual_bets (match_id, selection,
+                                   bookmaker, odds, fair_prob, edge, found_at,
+                                   close_fair_prob, close_updated_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (match_id, selection, book, odds, p, odds * p - 1,
+                             snapshot_time, p, snapshot_time))
+                new += cur.rowcount
+    print(f"  Scommesse virtuali nuove (quota italiana sopra Pinnacle di almeno "
+          f"{EDGE_MIN:.0%}): {new}")
+
+
 def main():
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
@@ -288,6 +333,7 @@ def main():
     meta = load_market_meta(conn)
 
     unmatched = set()
+    run_prices = {}   # match_id -> {bookmaker: {selezione: quota}} di questa esecuzione
     for slug, label in books:
         saved, scorer_rows, scorer_matches = 0, 0, 0
         for fx in responses.get(slug, []):
@@ -302,6 +348,7 @@ def main():
                 unmatched.add(f"{league}: {home} - {away} ({fx['startTime'][:10]})")
                 continue
             table = "reference_odds" if slug == REFERENCE_BOOKMAKER[0] else "odds_snapshots"
+            run_prices.setdefault(match_id, {})[label] = prices
             for selection, odds in prices.items():
                 # Salviamo una nuova "fotografia" solo se la quota è cambiata
                 # dall'ultima volta: stesso storico dei movimenti, ma senza
@@ -334,6 +381,8 @@ def main():
         print(f"  -> {label}: quote salvate per {saved} partite"
               + (f", marcatori per {scorer_matches} partite ({scorer_rows} giocatori)"
                  if scorer_matches else ""))
+    conn.commit()
+    record_virtual_bets(cur, run_prices, snapshot_time)
     conn.commit()
     conn.close()
 
