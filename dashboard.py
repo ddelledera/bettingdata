@@ -1722,8 +1722,62 @@ with tab_analisi:
             c3.metric("Modello rispetto a Pinnacle", f"{scarto:+.1%}",
                       help="Positivo = il modello sbaglia più del mercato.")
 
+            v3 = bt.get("v3")
+            if v3:
+                st.subheader("I nostri dati migliorano il prezzo di Pinnacle?")
+                st.caption(
+                    "Modello a correzione: si parte dalla probabilità di Pinnacle del mattino e si "
+                    "impara solo una piccola correzione dai nostri segnali (forza da gol, tiri, tiri "
+                    "in porta, campionato). Se i segnali non servono, la correzione resta zero. "
+                    f"Periodo di sviluppo {v3['periodo_sviluppo']['da']} / {v3['periodo_sviluppo']['a']}, "
+                    "ogni mese allenato solo sui mesi precedenti. Differenza negativa = meglio di Pinnacle.")
+                ref = v3["riferimenti"]
+                if ref.get("partite"):
+                    st.caption(f"Log loss sulle stesse {ref['partite']} partite: Pinnacle mattino "
+                               f"{ref['pinnacle_mattino']}, Pinnacle chiusura {ref['pinnacle_chiusura']}, "
+                               f"Dixon-Coles da solo {ref['dixon_coles']}.")
+                righe = []
+                for v in v3["varianti"]:
+                    c = v.get("contro_pinnacle") or {}
+                    esito = ("—" if not c else "meglio di Pinnacle" if c["significativa"] and c["differenza"] < 0
+                             else "peggio di Pinnacle" if c["significativa"] else "non distinguibile")
+                    righe.append({"Variante": v["variante"] + ("  ← scelta" if v["variante"] == v3["variante_scelta"] else ""),
+                                  "Log loss": v["log_loss"], "Differenza": c.get("differenza"),
+                                  "Intervallo 95%": f"{c['da']:+.5f} / {c['a']:+.5f}" if c else "",
+                                  "Esito": esito})
+                st.dataframe(pd.DataFrame(righe), hide_index=True, width='stretch')
+                ho = v3["holdout"]
+                if ho.get("esito"):
+                    reg = ho["esito"]["regole"]
+                    (st.success if ho["esito"]["adottare"] else st.warning)(
+                        ("Holdout aperto: la correzione SUPERA la regola di adozione."
+                         if ho["esito"]["adottare"] else "Holdout aperto: la correzione NON supera la regola di adozione.")
+                        + "\n\n" + "\n".join(f"- {'✅' if ok else '❌'} {k}" for k, ok in reg.items()))
+                else:
+                    st.caption(f"Holdout (dal {ho['da']}) ancora chiuso: {ho['partite_con_pinnacle']} partite "
+                               "con Pinnacle raccolte. Si apre una volta sola, a variante decisa.")
+                ant = v3.get("anteprima_regola_sviluppo")
+                if ant:
+                    with st.expander("Regola di adozione applicata allo sviluppo (solo indicativa)"):
+                        st.markdown("\n".join(f"- {'✅' if ok else '❌'} {k}" for k, ok in ant["regole"].items()))
+                        st.caption("Sullo sviluppo il risultato è ottimista (la variante è stata scelta lì): "
+                                   "decide solo l'holdout.")
+                cov = v3.get("copertura_pinnacle")
+                if cov:
+                    with st.expander("Copertura delle quote Pinnacle nei file storici"):
+                        fav = cov["favorita_media"]
+                        st.caption(f"Probabilità media della favorita: {fav['con_pinnacle']} nelle partite "
+                                   f"con Pinnacle, {fav['senza_pinnacle']} in quelle senza (se sono molto "
+                                   "diverse, le partite senza Pinnacle non sono un campione casuale).")
+                        for titolo, chiave in (("Per stagione", "per_stagione"),
+                                               ("Per campionato", "per_campionato"), ("Per mese", "per_mese")):
+                            st.markdown(f"**{titolo}**")
+                            st.dataframe(pd.DataFrame(cov[chiave]).rename(columns={
+                                "gruppo": "Gruppo", "partite": "Partite", "con_pinnacle": "Con Pinnacle",
+                                "copertura": "Copertura"}), hide_index=True, width='stretch')
+
             v2 = bt.get("v2")
-            if v2:
+            if v2 and not v3:
                 st.subheader("Migliorare il modello senza ingannarsi")
                 st.caption(
                     f"Le varianti del modello si confrontano sulla VALIDAZIONE "
