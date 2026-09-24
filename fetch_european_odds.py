@@ -56,15 +56,19 @@ def load_into_db(events, league_name, conn):
 
     for event in events:
         match_date = event["commence_time"][:10]
+        # partita già iniziata: le quote sarebbero "live", non pre-partita
+        if event["commence_time"].replace("Z", "+00:00") <= datetime.now(timezone.utc).isoformat():
+            continue
         home_id = team_id(cur, event["home_team"])
         away_id = team_id(cur, event["away_team"])
 
         cur.execute("""
             INSERT INTO matches (date, league, season, home_team_id, away_team_id,
-                                  home_goals, away_goals)
-            VALUES (?, ?, 'current', ?, ?, NULL, NULL)
-            ON CONFLICT(date, home_team_id, away_team_id) DO NOTHING
-        """, (match_date, league_name, home_id, away_id))
+                                  home_goals, away_goals, kickoff_utc)
+            VALUES (?, ?, 'current', ?, ?, NULL, NULL, datetime(?))
+            ON CONFLICT(date, home_team_id, away_team_id) DO UPDATE SET
+                kickoff_utc = COALESCE(excluded.kickoff_utc, kickoff_utc)
+        """, (match_date, league_name, home_id, away_id, event.get("commence_time")))
         match_id = cur.execute(
             "SELECT id FROM matches WHERE date=? AND home_team_id=? AND away_team_id=?",
             (match_date, home_id, away_id)
