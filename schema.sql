@@ -74,8 +74,9 @@ CREATE TABLE IF NOT EXISTS player_match_stats (
     shots INTEGER,
     shots_on_target INTEGER,
     xg REAL,
-    penalties_taken INTEGER,
-    penalties_scored INTEGER,
+    penalties_taken INTEGER,   -- non disponibile su BSD (i rigori sbagliati non ci sono)
+    penalties_scored INTEGER,  -- rigori segnati, dagli eventi della partita
+    bsd_team_id INTEGER,       -- squadra (BSD) con cui ha giocato QUELLA partita
     UNIQUE(player_id, match_bsd_id)
 );
 
@@ -124,6 +125,7 @@ CREATE TABLE IF NOT EXISTS bsd_events (
     away_team_name TEXT,
     match_id INTEGER REFERENCES matches(id),
     stats_done INTEGER NOT NULL DEFAULT 0,
+    pens_done INTEGER NOT NULL DEFAULT 0,  -- rigori e squadra dei giocatori già letti
     home_score INTEGER,
     away_score INTEGER
 );

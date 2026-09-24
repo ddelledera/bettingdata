@@ -8,7 +8,9 @@ Endpoint verificati con una chiave vera (test_bsd.py):
   /events/{id}/player-stats/              minuti, gol, xG, tiri di TUTTI i
                                           giocatori di quella partita
   /events/{id}/incidents/                 sostituzioni (chi è entrato dalla
-                                          panchina -> non titolare)
+                                          panchina -> non titolare) e gol, con
+                                          goal_type "penalty" per i rigori
+                                          segnati (quelli sbagliati non ci sono)
   /players/?team_id=..                    rosa attuale, con infortuni
 
 COME FUNZIONA
@@ -48,6 +50,7 @@ CUPS = {"champions league": "Champions League", "europa league": "Europa League"
         "conference league": "Conference League"}
 HISTORY_FROM = "2025-07-01"   # stagione scorsa + stagione in corso
 MAX_EVENTS_PER_RUN = 700      # 2 richieste ciascuna: ~1.400 per esecuzione
+MAX_BACKFILL_PER_RUN = 1300   # partite già scaricate a cui aggiungere rigori e squadra
 
 session = requests.Session()
 session.headers["Authorization"] = f"Token {API_KEY}"
@@ -156,6 +159,15 @@ def get_or_create_player(cur, bsd_id):
     return cur.lastrowid
 
 
+def penalty_goals(incidents):
+    """Rigori segnati per giocatore (id BSD) dagli eventi della partita."""
+    out = {}
+    for inc in (incidents or {}).get("incidents", []) or []:
+        if inc.get("type") == "goal" and inc.get("goal_type") == "penalty" and inc.get("player_id"):
+            out[inc["player_id"]] = out.get(inc["player_id"], 0) + 1
+    return out
+
+
 def sync_player_stats(cur, conn):
     todo = cur.execute("""SELECT id, event_date FROM bsd_events WHERE stats_done = 0
                           ORDER BY event_date DESC LIMIT ?""",
@@ -173,6 +185,7 @@ def sync_player_stats(cur, conn):
         incidents = _get(f"/events/{eid}/incidents/") or {}
         came_on = {inc.get("player_in_id") for inc in incidents.get("incidents", [])
                    if inc.get("type") == "substitution"}
+        pens = penalty_goals(incidents)
 
         for p in stats.get("player_stats", []):
             minutes = p.get("minutes_played") or 0
@@ -183,21 +196,58 @@ def sync_player_stats(cur, conn):
             cur.execute("""
                 INSERT INTO player_match_stats
                     (player_id, match_bsd_id, match_date, started, minutes,
-                     goals, shots, shots_on_target, xg, penalties_taken, penalties_scored)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+                     goals, shots, shots_on_target, xg, penalties_taken, penalties_scored,
+                     bsd_team_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
                 ON CONFLICT(player_id, match_bsd_id) DO UPDATE SET
                     started = excluded.started, minutes = excluded.minutes,
                     goals = excluded.goals, shots = excluded.shots,
-                    shots_on_target = excluded.shots_on_target, xg = excluded.xg
+                    shots_on_target = excluded.shots_on_target, xg = excluded.xg,
+                    penalties_scored = excluded.penalties_scored,
+                    bsd_team_id = excluded.bsd_team_id
             """, (player_id, eid, edate[:10], started, minutes, p.get("goals") or 0,
                   p.get("total_shots") or 0, p.get("shots_on_target") or 0,
-                  p.get("expected_goals")))  # None se BSD non ha l'xG di quella partita
+                  p.get("expected_goals"),  # None se BSD non ha l'xG di quella partita
+                  pens.get(p["player_id"], 0), p.get("team_id")))
             saved += 1
-        cur.execute("UPDATE bsd_events SET stats_done = 1 WHERE id = ?", (eid,))
+        cur.execute("UPDATE bsd_events SET stats_done = 1, pens_done = 1 WHERE id = ?", (eid,))
         if i % 50 == 0:
             conn.commit()
             print(f"    ...{i}/{len(todo)} partite")
     print(f"  Righe giocatore-partita salvate: {saved}")
+
+
+def backfill_penalties(cur, conn):
+    """Per le partite scaricate prima che salvassimo rigori e squadra: rilegge
+    eventi e statistiche e completa penalties_scored e bsd_team_id. Qualche
+    giro e poi non c'è più niente da fare."""
+    todo = cur.execute("""SELECT id FROM bsd_events WHERE stats_done = 1 AND pens_done = 0
+                          ORDER BY event_date DESC LIMIT ?""", (MAX_BACKFILL_PER_RUN,)).fetchall()
+    remaining = cur.execute("SELECT COUNT(*) FROM bsd_events WHERE stats_done = 1 AND pens_done = 0"
+                            ).fetchone()[0] - len(todo)
+    if not todo:
+        return
+    print(f"  Partite a cui aggiungere rigori e squadra: {len(todo)} (ne resteranno {remaining})")
+    done = 0
+    for i, (eid,) in enumerate(todo, 1):
+        incidents = _get(f"/events/{eid}/incidents/")
+        stats = _get(f"/events/{eid}/player-stats/")
+        if incidents is None or stats is None:
+            continue  # errore temporaneo: riproveremo
+        pens = penalty_goals(incidents)
+        for p in stats.get("player_stats", []) or []:
+            if not p.get("player_id"):
+                continue
+            cur.execute("""UPDATE player_match_stats SET penalties_scored = ?, bsd_team_id = ?
+                           WHERE match_bsd_id = ? AND player_id =
+                                 (SELECT id FROM players WHERE bsd_id = ?)""",
+                        (pens.get(p["player_id"], 0), p.get("team_id"), eid, p["player_id"]))
+        cur.execute("UPDATE bsd_events SET pens_done = 1 WHERE id = ?", (eid,))
+        done += 1
+        if i % 100 == 0:
+            conn.commit()
+            print(f"    ...{i}/{len(todo)} partite")
+    print(f"  Completate: {done}")
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +316,8 @@ def main():
     conn.commit()
     print("2. Statistiche giocatori")
     sync_player_stats(cur, conn)
+    conn.commit()
+    backfill_penalties(cur, conn)
     conn.commit()
     print("3. Corrispondenza squadre")
     sync_team_map(cur)

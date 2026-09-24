@@ -28,6 +28,8 @@ MIGRATIONS = [
     ("bsd_events", "home_score", "INTEGER"),
     ("bsd_events", "away_score", "INTEGER"),
     ("matches", "kickoff_utc", "TEXT"),
+    ("player_match_stats", "bsd_team_id", "INTEGER"),
+    ("bsd_events", "pens_done", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
