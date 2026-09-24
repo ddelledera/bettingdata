@@ -20,6 +20,19 @@ Domande a cui risponde:
   5. Conviene "avvicinare" le nostre probabilità a quelle del mercato?
      (miscela modello/mercato: quale peso dà le previsioni migliori)
 
+VERSIONE 2 — metodo per migliorare il modello senza ingannarsi:
+  - le partite valutate sono divise in due periodi. VALIDAZIONE (stagione
+    2024-25): qui si confrontano le varianti del modello e si sceglie la
+    migliore. TEST (dal 2025-26 in poi): serve SOLO a verificare, alla fine,
+    la variante scelta. Non si sceglie mai niente guardando il test,
+    altrimenti un miglioramento trovato per caso sembrerebbe vero.
+  - ogni confronto ha un intervallo di confidenza (bootstrap per settimane):
+    una differenza di log loss di pochi millesimi può essere solo rumore.
+  - varianti provate: diversi "decadimenti" (quanto contano le partite
+    recenti) e "ridge" (quanto tirare verso la media), invece dei valori
+    scelti a occhio. I tiri e tiri in porta vengono già caricati, per i
+    prossimi passi (forza delle squadre dai tiri).
+
 Il risultato va in backtest_report.json, mostrato nella scheda "Performance
 del modello" della dashboard. Non tocca data.db. Gira una volta a settimana
 (workflow backtest.yml) e si può lanciare a mano.
@@ -27,7 +40,7 @@ del modello" della dashboard. Non tocca data.db. Gira una volta a settimana
 
 import json
 import math
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 
 import numpy as np
@@ -44,6 +57,18 @@ URL = "https://www.football-data.co.uk/mmz4281/{season}/{league}.csv"
 EV_BANDS = [(0.0, 0.05), (0.05, 0.10), (0.10, 0.25), (0.25, 10.0)]
 BLEND_WEIGHTS = [0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]   # peso del modello
 REPORT_PATH = "backtest_report.json"
+
+# Divisione validazione / test (vedi sopra)
+SPLIT_DATE = date(2025, 7, 1)
+# Varianti del modello: (decadimento, ridge). La prima è quella usata oggi dall'app.
+BASE_VARIANT = (0.001, 0.5)
+VARIANTS = [BASE_VARIANT] + [(d, r) for d in (0.0005, 0.001, 0.002, 0.004)
+                              for r in (0.1, 0.5, 2.0, 5.0) if (d, r) != BASE_VARIANT]
+BOOTSTRAP_REPS = 2000
+
+
+def variant_key(v):
+    return f"decadimento {v[0]:g}, ridge {v[1]:g}"
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +132,15 @@ def devig_power(values):
     return [x ** k for x in inv]
 
 
+def col_num(row, name):
+    """Un numero qualsiasi dal file (es. tiri), None se manca."""
+    try:
+        v = float(row.get(name))
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(v) else v
+
+
 def col(row, name):
     v = row.get(name)
     try:
@@ -134,11 +168,14 @@ def walk_forward(df, league):
         test = df[(df["Date"].dt.date >= m_start) & (df["Date"].dt.date < m_end)]
         if test.empty or len(train) < 300:
             continue
-        model = DixonColesModel().fit([
+        train_matches = [
             {"home_team": r.HomeTeam, "away_team": r.AwayTeam,
              "home_goals": int(r.FTHG), "away_goals": int(r.FTAG),
              "days_ago": (m_start - r.Date.date()).days}
-            for r in train.itertuples()])
+            for r in train.itertuples()]
+        models = {v: DixonColesModel(decay_rate=v[0], ridge=v[1]).fit(train_matches)
+                  for v in VARIANTS}
+        model = models[BASE_VARIANT]
         for _, r in test.iterrows():
             h, a = r["HomeTeam"], r["AwayTeam"]
             if h not in model.teams or a not in model.teams:
@@ -146,8 +183,12 @@ def walk_forward(df, league):
             ph, pd_, pa = model.predict_match(h, a)
             goals = model.market_probabilities(h, a)
             hg, ag = int(r["FTHG"]), int(r["FTAG"])
+            d = r["Date"].date()
             records.append({
-                "league": league, "date": r["Date"].date().isoformat(),
+                "league": league, "date": d.isoformat(),
+                "period": "validazione" if d < SPLIT_DATE else "test",
+                "pv": {variant_key(v): list(m.predict_match(h, a)) for v, m in models.items()},
+                "shots": [col_num(r, c) for c in ("HS", "AS", "HST", "AST")],
                 "p": [ph, pd_, pa], "p_over25": goals["prob_over25"], "p_btts": goals["prob_btts"],
                 "result": 0 if hg > ag else (1 if hg == ag else 2),
                 "over25": int(hg + ag >= 3), "btts": int(hg > 0 and ag > 0),
@@ -268,6 +309,88 @@ def sharp_vs_soft(records, odds_key, fair_key, close_key, outcome_fn, n_sel, by_
     return out
 
 
+def paired_comparison(records, prob_a, prob_b, reps=BOOTSTRAP_REPS, seed=0):
+    """Differenza di log loss A - B partita per partita (negativa = A è migliore),
+    con intervallo al 95% ricampionando settimane intere: le partite della
+    stessa giornata non sono indipendenti tra loro."""
+    diffs, weeks = [], []
+    for r in records:
+        pa, pb = prob_a(r), prob_b(r)
+        if pa is None or pb is None:
+            continue
+        o = r["result"]
+        diffs.append(-math.log(max(pa[o], 1e-12)) + math.log(max(pb[o], 1e-12)))
+        y, w, _ = date.fromisoformat(r["date"]).isocalendar()
+        weeks.append((y, w))
+    if len(diffs) < 50:
+        return None
+    diffs = np.array(diffs)
+    ids = {w: i for i, w in enumerate(sorted(set(weeks)))}
+    wk = np.array([ids[w] for w in weeks])
+    sums = np.bincount(wk, weights=diffs)
+    counts = np.bincount(wk)
+    rng = np.random.default_rng(seed)
+    pick = rng.integers(0, len(sums), size=(reps, len(sums)))
+    boot = sums[pick].sum(axis=1) / counts[pick].sum(axis=1)
+    lo, hi = np.percentile(boot, [2.5, 97.5])
+    return {"partite": int(len(diffs)), "differenza": round(float(diffs.mean()), 4),
+            "da": round(float(lo), 4), "a": round(float(hi), 4),
+            "significativa": bool(hi < 0 or lo > 0)}
+
+
+def summarize_v2(records):
+    """Metodo validazione/test: sceglie la variante sulla validazione e la
+    verifica sul test, con confronti statistici contro la base e Pinnacle."""
+    # stesse partite per tutti: servono anche le quote Pinnacle
+    rs = [r for r in records if r["pin_pre"] and r["pin_close"]]
+    per = {p: [r for r in rs if r["period"] == p] for p in ("validazione", "test")}
+    base_key = variant_key(BASE_VARIANT)
+
+    varianti = []
+    for v in VARIANTS:
+        k = variant_key(v)
+        row = {"variante": k, "base": v == BASE_VARIANT}
+        for p, recs in per.items():
+            row[p] = (round(log_loss([r["pv"][k] for r in recs], [r["result"] for r in recs]), 4)
+                      if recs else None)
+        varianti.append(row)
+    validi = [v for v in varianti if v["validazione"] is not None]
+    scelta = min(validi, key=lambda v: v["validazione"])["variante"] if validi else base_key
+
+    riferimenti = {}
+    for p, recs in per.items():
+        out = [r["result"] for r in recs]
+        riferimenti[p] = {
+            "partite": len(recs),
+            "pinnacle_prima": round(log_loss([r["pin_pre"] for r in recs], out), 4) if recs else None,
+            "pinnacle_chiusura": round(log_loss([r["pin_close"] for r in recs], out), 4) if recs else None,
+        }
+
+    m = lambda k: (lambda r: r["pv"][k])
+    confronti = []
+    def add(nome, periodo, fa, fb):
+        c = paired_comparison(per[periodo], fa, fb)
+        if c:
+            confronti.append({"confronto": nome, "periodo": periodo, **c})
+    add(f"scelta ({scelta}) contro base", "validazione", m(scelta), m(base_key))
+    add(f"scelta ({scelta}) contro base", "test", m(scelta), m(base_key))
+    add("scelta contro Pinnacle prima della partita", "test", m(scelta), lambda r: r["pin_pre"])
+    add("base contro Pinnacle prima della partita", "test", m(base_key), lambda r: r["pin_pre"])
+    add("Pinnacle prima contro Pinnacle chiusura", "test",
+        lambda r: r["pin_pre"], lambda r: r["pin_close"])
+
+    con_tiri = sum(1 for r in records if r.get("shots") and all(x is not None for x in r["shots"]))
+    return {
+        "divisione": {"validazione": f"fino al {SPLIT_DATE - timedelta(days=1):%d/%m/%Y}",
+                      "test": f"dal {SPLIT_DATE:%d/%m/%Y}"},
+        "varianti": varianti,
+        "variante_scelta": scelta,
+        "riferimenti": riferimenti,
+        "confronti": confronti,
+        "copertura_tiri": round(con_tiri / len(records), 3) if records else 0,
+    }
+
+
 def summarize(records):
     report = {}
     r1 = [r for r in records if r["pin_close"]]
@@ -354,6 +477,7 @@ def main():
         return
     report = summarize(all_records)
     report["per_campionato_log_loss"] = per_league
+    report["v2"] = summarize_v2(all_records)
     report["periodo"] = {"da": min(r["date"] for r in all_records),
                          "a": max(r["date"] for r in all_records)}
     report["generato"] = datetime.now(timezone.utc).isoformat()
@@ -362,6 +486,16 @@ def main():
     print(json.dumps({k: report[k] for k in ("partite_valutate", "periodo")}, ensure_ascii=False))
     print("log loss 1X2:", report["1x2"]["log_loss"])
     print("miglior peso del modello nella miscela:", report["1x2"]["peso_modello_migliore"])
+    v2 = report["v2"]
+    print(f"\nVERSIONE 2 — validazione {v2['divisione']['validazione']}, test {v2['divisione']['test']}")
+    print("riferimenti Pinnacle:", v2["riferimenti"])
+    for v in v2["varianti"]:
+        print(f"  {v['variante']:<32} validazione {v['validazione']}  test {v['test']}"
+              + ("   <- base" if v["base"] else "") + ("   <- scelta" if v["variante"] == v2["variante_scelta"] else ""))
+    for c in v2["confronti"]:
+        print(f"  {c['confronto']} [{c['periodo']}]: {c['differenza']:+.4f} "
+              f"(95%: {c['da']:+.4f} / {c['a']:+.4f}){'  SIGNIFICATIVA' if c['significativa'] else ''}")
+    print("partite con i tiri nel file:", v2["copertura_tiri"])
     print("scommesse 1X2 per fascia di EV:")
     for b in report["1x2"]["scommesse_modello"]:
         print("  ", b)
