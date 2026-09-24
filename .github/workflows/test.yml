@@ -1,0 +1,38 @@
+# Test di regressione: partono da soli ogni volta che carichi un file di
+# codice (.py, schema.sql, workflow). Se diventano rossi, l'ultima modifica
+# ha rotto qualcosa che prima funzionava: il log dice quale controllo.
+# Non partono per gli aggiornamenti automatici dei dati (data.db).
+
+name: Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**.py"
+      - "schema.sql"
+      - "requirements.txt"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Scarica il codice del progetto
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installa le librerie necessarie
+        run: pip install -r requirements.txt pytest
+
+      - name: Esegui i test di regressione
+        run: pytest test_regressione.py -v
