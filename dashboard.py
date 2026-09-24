@@ -199,6 +199,9 @@ h3 { color: var(--inchiostro); }
 }
 .spot-card.top .spot-meta { color: var(--menta); border-top-color: rgba(247, 249, 246, 0.15); }
 .spot-meta b { color: var(--inchiostro); font-weight: 600; }
+.spot-meta .faint { opacity: 0.6; font-size: 0.76rem; }
+.spot-q { font-size: 0.85rem; color: var(--grigio); margin-right: 2px; }
+.spot-card.top .spot-q { color: var(--menta); }
 .spot-card.top .spot-meta b { color: var(--crema); }
 .spot-warn { font-size: 0.8rem; color: #A63A3A; margin-top: 6px; }
 .spot-card.top .spot-warn { color: #F2B8B8; }
@@ -641,24 +644,23 @@ def render_spotlight_card(opp, top=False):
     if ev > EV_SOSPETTO:
         avviso = ('<div class="spot-warn">⚠️ Scarto molto grande dal mercato: più probabile '
                   'una quota non aggiornata che un vero affare. Verifica prima di giocare.</div>')
-    modello = (f"<span>Nostro modello <b>{pm:.0f}%</b></span>" if pm is not None and pm == pm else "")
+    modello = (f'<span class="faint">nostro modello {pm:.0f}%</span>' if pm is not None and pm == pm else "")
     render_html(f"""
     <div class="spot-card{' top' if top else ''}">
         <div class="spot-league">{opp['Campionato']}, {opp['Data']}</div>
         <div class="spot-teams">{opp['Partita']}</div>
         <div class="spot-pick">{opp['Esito']}</div>
         <div class="spot-price">
-            <div><span class="spot-odds">{odds:g}</span><span class="spot-book">{opp['Bookmaker']}</span></div>
+            <div><span class="spot-q">Quota</span> <span class="spot-odds">{odds:g}</span><span class="spot-book">{opp['Bookmaker']}</span></div>
             <div class="spot-fair">prezzo giusto <b>{fair_odds:.2f}</b><br>
                 <span class="spot-edge">{ev:+.1%}</span></div>
         </div>
         {avviso}
         <div class="spot-meta">
             <span>Pinnacle <b>{p:.0%}</b></span>
-            {modello}
             <span>{opp.get('Aggiornata', '')}</span>
-            <span>Kelly teorico <b>{opp['Puntata consigliata']}</b></span>
-            {risk_badge_html(odds)}
+            {modello}
+            <span class="faint">Kelly teorico {opp['Puntata consigliata']}</span>
         </div>
     </div>
     """)
@@ -893,6 +895,17 @@ indicato dall'etichetta in percentuale.
 # ---------------------------------------------------------------------------
 # SCHEDA 2: Schedina (a mano, o trovata automaticamente) da un unico bookmaker
 # ---------------------------------------------------------------------------
+QUOTA_MAX_OPZIONI = {"🟢 fino a 1.80": 1.80, "🟡 fino a 3.00": 3.00, "🔴 qualsiasi": float("inf")}
+
+
+def quota_max_selector(key):
+    """Quota massima per singola selezione, come tre pulsanti (prima era un
+    cursore grande per un controllo secondario). Ritorna la quota massima."""
+    scelta = st.segmented_control("Quota massima per selezione", list(QUOTA_MAX_OPZIONI),
+                                  default="🔴 qualsiasi", key=key)
+    return QUOTA_MAX_OPZIONI.get(scelta or "🔴 qualsiasi")
+
+
 def step_title(n, text):
     """Titolo di un passaggio numerato (la schedina si costruisce in sequenza)."""
     st.markdown(f'<div class="step-title"><span class="step-num">{n}</span>{text}</div>',
@@ -902,7 +915,7 @@ def step_title(n, text):
 SCHEDINA_MODI = [
     ("🖐️ Scelgo io le partite", "🖐️ Manuale", "Scegli tu le selezioni, tra quelle con valore."),
     ("🔍 Trova la combinazione migliore per me", "🔍 Obiettivo",
-     "Dici quanto vuoi vincere: trovo la combinazione più probabile che ci arriva."),
+     "Scegli una quota obiettivo: trovo la combinazione più probabile che ci arriva."),
     ("⚖️ Miglior equilibrio probabilità/valore", "⚖️ Equilibrio",
      "Nessun obiettivo da fissare: trovo il miglior compromesso tra probabilità e valore."),
 ]
@@ -922,16 +935,20 @@ with tab_schedina:
         with col_b:
             stake = st.number_input("Puntata (€)", min_value=1.0, value=10.0, step=1.0, key="sched_stake")
 
-        f1, f2, _ = st.columns([1, 1, 2])
-        with f1:
-            filtered_sched = competition_filter(matches_df, key="comp_schedina")
-        with f2:
-            markets_sched = market_filter(
-                MARKET_NAMES, key="mercati_schedina",
-                default=[m for m in MARKET_NAMES if m != "Marcatori"],
+        leghe = sorted(matches_df["league"].unique())
+        mercati_default = [m for m in MARKET_NAMES if m != "Marcatori"]
+        comp_now = [c for c in st.session_state.get("comp_schedina", leghe) if c in leghe]
+        merc_now = [m for m in st.session_state.get("mercati_schedina", mercati_default)
+                    if m in MARKET_NAMES]
+        with st.expander(f"⚙️ Filtri: {_summary(comp_now, leghe, 'tutte le competizioni', 'competizioni')}, "
+                         f"{len(merc_now)} mercati"):
+            sel_leghe = st.multiselect("Competizioni", leghe, default=leghe, key="comp_schedina")
+            markets_sched = st.multiselect(
+                "Mercati", MARKET_NAMES, default=mercati_default, key="mercati_schedina",
                 help="Al massimo una selezione per partita: esiti della stessa partita "
                      "(es. 1 e Over 2.5) sono legati tra loro. I Marcatori sono in prova: "
                      "il loro valore viene dal nostro modello, non verificato.")
+        filtered_sched = matches_df[matches_df["league"].isin(sel_leghe)]
         if "Marcatori" in markets_sched:
             st.caption("⚠️ Marcatori attivi: per questi il valore è stimato dal nostro modello, "
                        "non verificato (Pinnacle non li quota). Considerali in prova.")
@@ -1026,17 +1043,10 @@ with tab_schedina:
             )
             col_e, col_f = st.columns(2)
             with col_e:
-                num_matches_eq = st.slider("Numero di partite:", min_value=1, max_value=5,
+                num_matches_eq = st.slider("Numero di partite", min_value=1, max_value=5,
                                            value=3, key="eq_num_matches")
             with col_f:
-                max_risk_eq = st.select_slider(
-                    "Quota massima per singola selezione:",
-                    options=["🟢 Solo basse (≤1.80)", "🟡 Fino a medie (≤3.00)", "🔴 Qualsiasi"],
-                    value="🔴 Qualsiasi", key="eq_max_risk",
-                )
-            risk_order_eq = {"🟢 Quota bassa": 0, "🟡 Quota media": 1, "🔴 Quota alta": 2}
-            max_level_eq = {"🟢 Solo basse (≤1.80)": 0, "🟡 Fino a medie (≤3.00)": 1,
-                            "🔴 Qualsiasi": 2}[max_risk_eq]
+                max_odds_eq = quota_max_selector("eq_max_risk")
 
             if st.button("⚖️ Calcola le combinazioni", type="primary"):
                 legs_by_match = {}
@@ -1045,8 +1055,7 @@ with tab_schedina:
                     # solo selezioni con valore (EV >= 0), come nelle altre modalità
                     candidates = (entro_quota_max(find_value_bets(sched_probs(row), bm_odds, min_ev=0.0))
                                   + sched_scorer_legs(row))
-                    candidates = [c for c in candidates
-                                  if risk_order_eq[risk_label(c["odds"])] <= max_level_eq]
+                    candidates = [c for c in candidates if c["odds"] <= max_odds_eq]
                     for c in candidates:
                         c["match_id"] = row["id"]
                         c["match_label"] = f"{row['home']} vs {row['away']}"
@@ -1119,24 +1128,17 @@ with tab_schedina:
             # --- Modalità automatica: dato un obiettivo, trovo io la combinazione ---
             col_c, col_d = st.columns(2)
             with col_c:
-                target_roi_pct = st.slider("Ritorno desiderato:", min_value=20, max_value=500,
-                                            value=100, step=10, format="+%d%%")
+                quota_obiettivo = st.slider(
+                    "Quota obiettivo", min_value=1.2, max_value=6.0, value=2.0, step=0.1,
+                    format="%.1f", key="quota_obiettivo",
+                    help="La quota combinata minima della schedina: 2.0 vuol dire raddoppiare "
+                         "la puntata se vince. Tra le combinazioni che ci arrivano, scelgo la più probabile.")
+                target_roi_pct = round((quota_obiettivo - 1) * 100)
             with col_d:
-                num_matches = st.slider("Numero di partite:", min_value=1, max_value=5, value=3)
-
-            max_risk = st.select_slider(
-                "Quota massima per singola selezione:",
-                options=["🟢 Solo basse (≤1.80)", "🟡 Fino a medie (≤3.00)", "🔴 Qualsiasi"],
-                value="🔴 Qualsiasi",
-            )
-            risk_order = {"🟢 Quota bassa": 0, "🟡 Quota media": 1, "🔴 Quota alta": 2}
-            max_risk_level = {"🟢 Solo basse (≤1.80)": 0, "🟡 Fino a medie (≤3.00)": 1,
-                              "🔴 Qualsiasi": 2}[max_risk]
-            st.caption(
-                "Limitare alle quote basse riduce le partite disponibili tra cui scegliere: "
-                "con poche selezioni a quota bassa, potrebbe non essere possibile raggiungere il "
-                "ritorno desiderato — in quel caso te lo segnalo."
-            )
+                num_matches = st.slider("Numero di partite", min_value=1, max_value=5, value=3)
+            max_odds_auto = quota_max_selector("auto_max_risk")
+            st.caption("Con quote massime basse le selezioni disponibili sono meno: se la quota "
+                       "obiettivo non si può raggiungere, te lo segnalo.")
 
             if st.button("🔍 Trova la combinazione migliore", type="primary"):
                 legs_by_match = {}
@@ -1146,8 +1148,7 @@ with tab_schedina:
                     # conveniente, non solo "probabile"
                     candidates = (entro_quota_max(find_value_bets(sched_probs(row), bm_odds, min_ev=0.0))
                                   + sched_scorer_legs(row))
-                    candidates = [c for c in candidates
-                                  if risk_order[risk_label(c["odds"])] <= max_risk_level]
+                    candidates = [c for c in candidates if c["odds"] <= max_odds_auto]
                     if candidates:
                         for c in candidates:
                             c["match_id"] = row["id"]
@@ -1159,10 +1160,10 @@ with tab_schedina:
 
                 if result is None:
                     st.session_state.pop("auto_combo", None)
-                    st.warning(f"Non ci sono abbastanza partite disponibili su {selected_bookmaker} "
-                               f"(con il rischio scelto) per formare una combinazione di "
-                               f"{num_matches} partite. Prova ad allargare il rischio massimo, "
-                               f"o riduci il numero di partite.")
+                    st.warning(f"Non ci sono abbastanza partite con valore su {selected_bookmaker} "
+                               f"(con la quota massima scelta) per una schedina di "
+                               f"{num_matches} partite. Alza la quota massima o riduci il numero "
+                               f"di partite.")
                 else:
                     found_combo, hit_target = result
                     st.session_state["auto_combo"] = {
@@ -1175,8 +1176,8 @@ with tab_schedina:
                 combo = auto["combo"]
                 target_roi_pct = auto["target_roi_pct"]
                 if not auto["hit_target"]:
-                    st.info(f"Non ho trovato una combinazione che raggiunga +{target_roi_pct}% "
-                            f"— questa è quella con il ritorno più alto possibile disponibile ora.")
+                    st.info(f"Nessuna combinazione arriva a quota {1 + target_roi_pct / 100:.2f}: "
+                            f"questa è quella con la quota più alta disponibile ora.")
                 else:
                     st.success("Trovata una combinazione che raggiunge l'obiettivo:")
 
