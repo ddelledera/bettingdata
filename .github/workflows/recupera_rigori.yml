@@ -1,0 +1,48 @@
+# Una tantum: completa SUBITO rigori e squadra di tutte le partite già
+# scaricate da BSD, invece di aspettare 3 giri giornalieri. Usa solo BSD
+# (nessuna richiesta OddsPapi). Si avvia a mano; può richiedere una mezz'ora.
+
+name: Recupera rigori BSD
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-db
+  cancel-in-progress: false
+
+jobs:
+  recupera:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Scarica il codice del progetto
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installa le librerie necessarie
+        run: pip install -r requirements.txt
+
+      - name: Recupera rigori e squadra da BSD
+        env:
+          BSD_API_KEY: ${{ secrets.BSD_API_KEY }}
+          BSD_BACKFILL_MAX: "5000"
+        run: python fetch_player_data.py
+
+      - name: Salva i dati aggiornati nel progetto
+        run: |
+          git config user.name "recupero-rigori"
+          git config user.email "actions@github.com"
+          git add data.db
+          git diff --staged --quiet || git commit -m "Rigori e squadre dei giocatori da BSD"
+          git pull --rebase --autostash
+          git push
