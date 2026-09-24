@@ -43,186 +43,213 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap');
 
+/* Colori dell'app: verde scuro, crema, oro (come prima) */
+:root {
+    --verde: #1B4332; --verde-scuro: #163B2B; --verde-medio: #2D6A4F;
+    --menta: #8FBFA3; --oro: #D4A017; --crema: #F7F9F6;
+    --inchiostro: #1A2420; --grigio: #55635C; --linea: #D5E0DA;
+}
+
+/* Contenuto centrato, non più largo di ~1350 px: righe leggibili e
+   controlli di dimensione normale anche su monitor grandi */
+.block-container, [data-testid="stMainBlockContainer"] {
+    max-width: 1360px !important;
+    margin: 0 auto;
+    padding-top: 3.2rem !important;
+}
+
 h1, h2, h3, .leg-teams, .leg-odds-value {
     font-family: 'Oswald', sans-serif !important;
     letter-spacing: 0.2px;
 }
-h1 { color: #1B4332; font-weight: 700; }
+h1 { color: var(--verde); font-weight: 700; }
+h3 { color: var(--inchiostro); }
+
+/* Testi secondari: più grandi e più scuri di prima */
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {
+    font-size: 0.9rem !important;
+    color: var(--grigio) !important;
+    line-height: 1.5;
+}
+
+/* Intestazione */
+.app-header {
+    background: linear-gradient(135deg, var(--verde) 0%, var(--verde-scuro) 100%);
+    border-radius: 12px;
+    padding: 1.4rem 1.8rem 1.2rem 1.8rem;
+    margin-bottom: 1.2rem;
+}
+.app-header h1 {
+    color: var(--crema) !important;
+    margin: 0 0 0.15rem 0 !important;
+    padding: 0 !important;
+    font-size: 1.9rem !important;
+}
+.app-header p { color: var(--menta); font-size: 0.98rem; margin: 0; }
+
+/* Navigazione (vale sia per le versioni vecchie sia per quelle nuove di Streamlit) */
+[data-testid="stTabs"] [data-baseweb="tab-list"], [data-testid="stTabs"] [role="tablist"] {
+    gap: 4px;
+    border-bottom: 2px solid #E2E8E5;
+}
+[data-testid="stTabs"] button[data-baseweb="tab"], [data-testid="stTabs"] [data-testid="stTab"] {
+    padding: 10px 18px !important;
+    color: #7A8A81;
+}
+[data-testid="stTabs"] [data-baseweb="tab"] p, [data-testid="stTabs"] [data-testid="stTab"] p {
+    font-family: 'Oswald', sans-serif !important;
+    font-weight: 600;
+    font-size: 1.02rem !important;
+}
+[data-testid="stTabs"] [aria-selected="true"], [data-testid="stTabs"] [aria-selected="true"] p {
+    color: var(--verde) !important;
+}
+
+/* Pulsanti */
+[data-testid="stButton"] button, [data-testid="stPopover"] button { border-radius: 6px; font-weight: 600; }
+[data-testid="stButton"] button[kind="primary"] { background-color: var(--verde); border-color: var(--verde); }
+[data-testid="stButton"] button[kind="primary"]:hover { background-color: #0F2B1E; border-color: #0F2B1E; }
+
+/* Pulsanti radio come "pillole" */
+[data-testid="stRadio"] > div[role="radiogroup"] { gap: 8px; }
+[data-testid="stRadio"] div[role="radiogroup"] label {
+    background: #EEF3F0; padding: 5px 14px; border-radius: 20px; border: 1px solid var(--linea);
+}
+[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) { background: var(--verde); border-color: var(--verde); }
+[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) p { color: var(--crema) !important; }
+[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child { display: none; }
+
+/* Passaggi numerati della schedina (è davvero una sequenza) */
+.step-title {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Oswald', sans-serif; font-size: 1.15rem; font-weight: 600;
+    color: var(--inchiostro); margin: 0.6rem 0 0.4rem 0;
+}
+.step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--verde); color: var(--crema); font-size: 0.9rem;
+}
+
+/* Riquadri delle tre modalità della schedina */
+.mode-card {
+    border: 1px solid var(--linea); border-radius: 10px; background: #FFFFFF;
+    padding: 14px 16px 10px 16px; min-height: 104px; margin-bottom: 6px;
+}
+.mode-card.on { border: 2px solid var(--verde); background: #EEF5F0; }
+.mode-card .t { font-family: 'Oswald', sans-serif; font-size: 1.08rem; font-weight: 600; color: var(--inchiostro); }
+.mode-card .d { font-size: 0.88rem; color: var(--grigio); margin-top: 3px; }
 
 /* Riga "tabellone" per ogni partita di una schedina */
 .leg-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: linear-gradient(155deg, #1B4332 0%, #163B2B 100%);
-    border-left: 5px solid var(--risk-color, #D4A017);
-    border-radius: 8px;
-    padding: 14px 20px;
-    margin-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: #FFFFFF; border: 1px solid var(--linea);
+    border-left: 5px solid var(--risk-color, var(--oro));
+    border-radius: 8px; padding: 12px 18px; margin-bottom: 8px;
 }
 .leg-basso { --risk-color: #4CAF7D; }
 .leg-medio { --risk-color: #D4A017; }
 .leg-alto  { --risk-color: #D96C6C; }
-
 .leg-match { flex: 1; }
-.leg-teams { font-size: 1.08rem; font-weight: 600; color: #F7F9F6; }
-.leg-date { font-size: 0.8rem; color: #8FBFA3; margin-top: 1px; }
-
+.leg-teams { font-size: 1.05rem; font-weight: 600; color: var(--inchiostro); }
+.leg-date { font-size: 0.82rem; color: var(--grigio); margin-top: 1px; }
 .leg-pick {
-    background: rgba(247, 249, 246, 0.12);
-    color: #F7F9F6;
-    font-weight: 600;
-    font-size: 0.85rem;
-    padding: 4px 12px;
-    border-radius: 20px;
-    margin: 0 16px;
-    white-space: nowrap;
+    background: #EEF3F0; color: var(--verde); font-weight: 600; font-size: 0.88rem;
+    padding: 4px 12px; border-radius: 20px; margin: 0 16px; white-space: nowrap;
 }
-
 .leg-odds { text-align: right; min-width: 90px; }
-.leg-odds-value { font-size: 1.35rem; font-weight: 700; color: #D4A017; }
-.leg-odds-prob { font-size: 0.78rem; color: #8FBFA3; }
+.leg-odds-value { font-size: 1.35rem; font-weight: 700; color: var(--verde); }
+.leg-odds-prob { font-size: 0.8rem; color: var(--grigio); }
 
-/* Schede "in evidenza" per le migliori opportunità, in cima alla pagina */
+/* Schede delle opportunità e dei marcatori.
+   Chiare di default; le prime tre in verde pieno. */
 .spot-card {
-    background: linear-gradient(155deg, #1B4332 0%, #163B2B 100%);
-    border-radius: 10px;
-    padding: 20px 22px;
-    color: #F7F9F6;
-    height: 100%;
+    border-radius: 10px; padding: 16px 18px 14px 18px; height: 100%;
+    background: #FFFFFF; color: var(--inchiostro);
+    border: 1px solid #CFDDD5; border-left: 4px solid var(--verde-medio);
 }
-.spot-league {
-    font-size: 0.72rem;
-    color: #8FBFA3;
-    font-weight: 600;
+.spot-card.top {
+    background: linear-gradient(155deg, var(--verde) 0%, var(--verde-scuro) 100%);
+    color: var(--crema); border: none;
 }
+.spot-league { font-size: 0.8rem; color: var(--grigio); }
+.spot-card.top .spot-league { color: var(--menta); }
 .spot-teams {
-    font-family: 'Oswald', sans-serif !important;
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin: 4px 0 14px 0;
-    line-height: 1.25;
+    font-family: 'Oswald', sans-serif !important; font-size: 1.2rem; font-weight: 600;
+    margin: 2px 0 2px 0; line-height: 1.25;
 }
-.spot-ev-value {
-    font-family: 'Oswald', sans-serif !important;
-    font-size: 2.4rem;
-    font-weight: 700;
-    color: #D4A017;
-    line-height: 1;
+.spot-pick { font-size: 0.95rem; font-weight: 600; color: var(--verde-medio); margin-bottom: 10px; }
+.spot-card.top .spot-pick { color: #CFE3D8; }
+.spot-price { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.spot-odds { font-family: 'Oswald', sans-serif; font-size: 2.1rem; font-weight: 700; line-height: 1; color: var(--verde); }
+.spot-card.top .spot-odds { color: var(--crema); }
+.spot-book { font-size: 0.95rem; font-weight: 600; margin-left: 6px; }
+.spot-fair { text-align: right; font-size: 0.85rem; color: var(--grigio); line-height: 1.35; }
+.spot-card.top .spot-fair { color: var(--menta); }
+.spot-fair b { color: var(--inchiostro); }
+.spot-card.top .spot-fair b { color: var(--crema); }
+.spot-edge {
+    display: inline-block; font-weight: 700; font-size: 0.9rem; padding: 1px 8px;
+    border-radius: 12px; background: #F6ECCB; color: #7A5C00;
 }
-.spot-ev-label {
-    font-size: 0.7rem;
-    color: #8FBFA3;
-    margin-bottom: 12px;
+.spot-card.top .spot-edge { background: var(--oro); color: var(--verde-scuro); }
+.spot-meta {
+    display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.8rem; color: var(--grigio);
+    border-top: 1px solid #E4ECE7; padding-top: 8px; margin-top: 12px;
 }
-.spot-details {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.82rem;
-    border-top: 1px solid rgba(247, 249, 246, 0.15);
-    padding-top: 10px;
-}
-.spot-details b { color: #F7F9F6; }
+.spot-card.top .spot-meta { color: var(--menta); border-top-color: rgba(247, 249, 246, 0.15); }
+.spot-meta b { color: var(--inchiostro); font-weight: 600; }
+.spot-card.top .spot-meta b { color: var(--crema); }
+.spot-warn { font-size: 0.8rem; color: #A63A3A; margin-top: 6px; }
+.spot-card.top .spot-warn { color: #F2B8B8; }
+/* numero protagonista dei marcatori: la probabilità di segnare */
+.spot-big { font-family: 'Oswald', sans-serif; font-size: 2.1rem; font-weight: 700; line-height: 1; color: var(--verde); }
+.spot-big-label { font-size: 0.82rem; color: var(--grigio); margin-top: 2px; }
 
-/* Schede per lo storico delle schedine */
+/* Storico schedine */
 .slip-card {
-    border-radius: 8px;
-    padding: 14px 18px;
-    margin-bottom: 10px;
-    border-left: 5px solid var(--slip-color, #7A8A81);
-    background: #FFFFFF;
+    border-radius: 8px; padding: 14px 18px; margin-bottom: 10px;
+    border-left: 5px solid var(--slip-color, #7A8A81); background: #FFFFFF;
     box-shadow: 0 1px 2px rgba(27, 67, 50, 0.08);
 }
 .slip-pending { --slip-color: #D4A017; }
 .slip-won { --slip-color: #2D6A4F; }
 .slip-lost { --slip-color: #A63A3A; }
 .slip-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    font-family: 'Oswald', sans-serif;
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: #1A2420;
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: 'Oswald', sans-serif; font-size: 1.05rem; font-weight: 600; color: var(--inchiostro);
 }
 .slip-profit-won { color: #2D6A4F; font-weight: 700; }
 .slip-profit-lost { color: #A63A3A; font-weight: 700; }
-.slip-meta { font-size: 0.82rem; color: #6B7972; margin-top: 4px; }
+.slip-meta { font-size: 0.85rem; color: var(--grigio); margin-top: 4px; }
 
-/* Intestazione con banda colorata, invece del titolo semplice */
-.app-header {
-    background: linear-gradient(135deg, #1B4332 0%, #163B2B 100%);
-    margin: -3.5rem -4rem 1.8rem -4rem;
-    padding: 2.2rem 4rem 1.6rem 4rem;
+/* Panoramica della Performance: un blocco per la prova dal vivo e uno per il backtest */
+.verdict {
+    background: #FFFFFF; border: 1px solid var(--linea); border-radius: 12px;
+    padding: 18px 20px; min-height: 170px; margin-bottom: 14px;
 }
-.app-header h1 {
-    color: #F7F9F6 !important;
-    margin: 0 0 0.2rem 0 !important;
-    font-size: 2.1rem !important;
+.verdict .k { font-size: 0.85rem; color: var(--grigio); }
+.verdict .big { font-family: 'Oswald', sans-serif; font-size: 2.6rem; font-weight: 700; color: var(--verde); line-height: 1.05; }
+.verdict .sub { font-size: 0.92rem; color: var(--inchiostro); margin-top: 4px; }
+.verdict .ci { font-size: 0.85rem; color: var(--grigio); margin-top: 2px; }
+.light-badge {
+    display: inline-block; margin-top: 10px; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.85rem; font-weight: 600;
 }
-.app-header p {
-    color: #8FBFA3;
-    font-size: 0.95rem;
-    margin: 0;
-}
-
-/* Schede (tab) più marcate, come una vera navigazione da app */
-[data-testid="stTabs"] [data-baseweb="tab-list"] {
-    gap: 4px;
-    border-bottom: 2px solid #E2E8E5;
-}
-[data-testid="stTabs"] button[data-baseweb="tab"] {
-    font-family: 'Oswald', sans-serif;
-    font-weight: 600;
-    font-size: 0.95rem;
-    padding: 10px 22px;
-    color: #7A8A81;
-}
-[data-testid="stTabs"] button[aria-selected="true"] {
-    color: #1B4332 !important;
-}
-
-/* Pulsanti principali, più decisi */
-[data-testid="stButton"] button {
-    border-radius: 6px;
-    font-weight: 600;
-}
-[data-testid="stButton"] button[kind="primary"] {
-    background-color: #1B4332;
-    border-color: #1B4332;
-}
-[data-testid="stButton"] button[kind="primary"]:hover {
-    background-color: #0F2B1E;
-    border-color: #0F2B1E;
-}
-
-/* Pulsanti radio come "pillole" invece dei soliti pallini */
-[data-testid="stRadio"] > div[role="radiogroup"] {
-    gap: 8px;
-}
-[data-testid="stRadio"] label {
-    background: #EEF3F0;
-    padding: 7px 18px;
-    border-radius: 20px;
-    border: 1px solid #D5E0DA;
-}
-[data-testid="stRadio"] label[data-checked="true"] {
-    background: #1B4332;
-    border-color: #1B4332;
-}
-[data-testid="stRadio"] label[data-checked="true"] p {
-    color: #F7F9F6 !important;
-}
-[data-testid="stRadio"] label > div:first-child {
-    display: none;
-}
+.light-rosso { background: #F6DADA; color: #8A2F2F; }
+.light-giallo { background: #F6ECCB; color: #7A5C00; }
+.light-verde { background: #D8EDE1; color: #1F5A3E; }
+.mini-list { font-size: 0.92rem; }
+.mini-list div { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #E9EFEB; }
+.mini-list div:last-child { border-bottom: none; }
+.mini-list span.n { color: var(--grigio); font-size: 0.85rem; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("""
 <div class="app-header">
     <h1>⚽ Le mie previsioni calcio</h1>
-    <p>Partite in arrivo ordinate per convenienza, con quota migliore e puntata consigliata.</p>
+    <p>Le quote dei bookmaker italiani confrontate con il prezzo giusto di Pinnacle.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -254,9 +281,28 @@ def not_started_sql(conn, alias="m"):
     return f"{alias}.date >= date('now')"
 
 
+GIORNI = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"]
+MESI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"]
+
+
+def fmt_when(date_str, kickoff_utc=None):
+    """'sab 11 ott, 16:00' (ora italiana) se conosciamo l'orario, altrimenti 'sab 11 ott'."""
+    from zoneinfo import ZoneInfo
+    try:
+        if kickoff_utc and kickoff_utc == kickoff_utc:
+            t = (datetime.fromisoformat(str(kickoff_utc)).replace(tzinfo=timezone.utc)
+                 .astimezone(ZoneInfo("Europe/Rome")))
+            return f"{GIORNI[t.weekday()]} {t.day} {MESI[t.month - 1]}, {t:%H:%M}"
+        d = datetime.fromisoformat(str(date_str)[:10])
+        return f"{GIORNI[d.weekday()]} {d.day} {MESI[d.month - 1]}"
+    except (ValueError, TypeError):
+        return str(date_str)
+
+
 def load_upcoming_with_predictions(conn):
+    ko = "m.kickoff_utc" if has_kickoff(conn) else "NULL"
     query = f"""
-        SELECT m.id, m.date, m.league, h.name AS home, a.name AS away,
+        SELECT m.id, m.date, m.league, {ko} AS kickoff_utc, h.name AS home, a.name AS away,
                p.prob_home, p.prob_draw, p.prob_away,
                p.prob_btts, p.prob_over15, p.prob_over25, p.prob_over35
         FROM matches m
@@ -418,9 +464,10 @@ BOOKMAKER_CLONI = {
 
 def load_upcoming_player_predictions(conn):
     """Previsioni marcatori per le partite in arrivo, con nome squadra e avversario."""
+    ko = "m.kickoff_utc" if has_kickoff(conn) else "NULL"
     query = f"""
         SELECT pl.id AS player_id, pl.name AS player, t.name AS team, m.id AS match_id,
-               m.date, m.league,
+               m.date, m.league, {ko} AS kickoff_utc,
                ht.name AS home_team, at.name AS away_team,
                pp.expected_goals, pp.prob_score_anytime,
                pp.expected_minutes, pp.starting_probability
@@ -481,43 +528,65 @@ def render_html(html):
 
 
 def render_scorer_card(row):
-    """Disegna una scheda per la probabilità di un giocatore di segnare,
-    nello stesso stile delle schede 'in evidenza' delle opportunità."""
+    """Scheda della probabilità di un giocatore di segnare. Numero
+    protagonista: la probabilità; quota e valore, se ci sono, nei dettagli."""
     avversario = row["away_team"] if row["team"] == row["home_team"] else row["home_team"]
     minuti = f"{row['expected_minutes']:.0f}'" if pd.notna(row.get("expected_minutes")) else "—"
     titolare = f"{row['starting_probability']:.0%}" if pd.notna(row.get("starting_probability")) else "—"
     quota_html = ""
     if pd.notna(row.get("best_odds")):
         ev = expected_value(row["prob_score_anytime"], row["best_odds"])
-        colore = "#5EB78A" if ev > 0 else "#E28F8F"
-        quota_html = (f'<div class="spot-details" style="margin-top:6px; border-top:none; padding-top:0;">'
-                      f'<span>Quota <b>{row["best_odds"]}</b> · {row["best_bookmaker"]} · '
-                      f'{odds_age_label(row["best_time"])}</span>'
-                      f'<span style="color:{colore}; font-weight:600;">EV {ev:+.1%}</span></div>')
+        colore = "#2D6A4F" if ev > 0 else "#A63A3A"
+        quota_html = (f'<span>Quota <b>{row["best_odds"]:g}</b> {row["best_bookmaker"]}</span>'
+                      f'<span style="color:{colore}; font-weight:600;">EV {ev:+.1%}</span>'
+                      f'<span>{odds_age_label(row["best_time"])}</span>')
     render_html(f"""
     <div class="spot-card">
-        <div class="spot-league">{row['league'].upper()}</div>
-        <div class="spot-teams">{row['player']}<br><span style="font-size:0.85rem; font-weight:400; color:#8FBFA3;">{row['team']} vs {avversario}</span></div>
-        <div class="spot-ev-value">{row['prob_score_anytime']:.0%}</div>
-        <div class="spot-ev-label">probabilità di segnare (nostro modello) — {row['date']}</div>
-        <div class="spot-details">
+        <div class="spot-league">{row['league']}, {fmt_when(row['date'], row.get('kickoff_utc'))}</div>
+        <div class="spot-teams">{row['player']}</div>
+        <div class="spot-pick">{row['team']} contro {avversario}</div>
+        <div class="spot-big">{row['prob_score_anytime']:.0%}</div>
+        <div class="spot-big-label">probabilità di segnare (nostro modello)</div>
+        <div class="spot-meta">
             <span>Gol attesi <b>{row['expected_goals']:.2f}</b></span>
             <span>Minuti attesi <b>{minuti}</b></span>
             <span>Titolare <b>{titolare}</b></span>
+            {quota_html}
         </div>
-        {quota_html}
     </div>
     """)
 
 
+def _summary(selected, options, all_label, one_word):
+    """Riassunto breve di una scelta multipla, per l'etichetta del pulsante."""
+    if not selected:
+        return "nessuna"
+    if len(selected) == len(options):
+        return f"{all_label} ({len(options)})"
+    if len(selected) <= 2:
+        return ", ".join(selected)
+    return f"{len(selected)} {one_word}"
+
+
 def competition_filter(matches_df, key):
-    """Mostra un selettore di competizioni (una, più di una, o tutte) e
-    ritorna solo le partite di quelle scelte. Usata in ogni scheda."""
+    """Selettore delle competizioni, compatto: un pulsante col riassunto
+    ("Competizioni: tutte (7)") che apre la lista. Ritorna solo le partite
+    delle competizioni scelte. Usata in ogni scheda."""
     available = sorted(matches_df["league"].unique())
-    selected = st.multiselect("Competizione:", options=available, default=available, key=key)
+    current = [c for c in st.session_state.get(key, available) if c in available]
+    with st.popover(f"🏆 Competizioni: {_summary(current, available, 'tutte', 'competizioni')}"):
+        selected = st.multiselect("Competizioni", options=available, default=available, key=key)
     if not selected:
         return matches_df.iloc[0:0]
     return matches_df[matches_df["league"].isin(selected)]
+
+
+def market_filter(options, key, default=None, help=None):
+    """Come competition_filter, per i mercati."""
+    default = options if default is None else default
+    current = [m for m in st.session_state.get(key, default) if m in options]
+    with st.popover(f"📋 Mercati: {_summary(current, options, 'tutti', 'mercati')}"):
+        return st.multiselect("Mercati", options, default=default, key=key, help=help)
 
 
 def risk_css_class(odds):
@@ -566,31 +635,37 @@ def risk_badge_html(odds):
 EV_SOSPETTO = 0.25  # oltre +25% è molto più probabile un errore del modello che un regalo
 
 
-def render_spotlight_card(opp):
-    """Disegna una scheda per un'opportunità di valore, con l'EV come numero
-    grande e protagonista, e tutti i dettagli utili sotto."""
-    avviso = ""
-    ev = float(str(opp["Valore atteso (EV)"]).replace("%", "").replace("+", "")) / 100
+def render_spotlight_card(opp, top=False):
+    """Scheda di un'opportunità. Il dato principale è la quota e il bookmaker,
+    confrontati col prezzo giusto di Pinnacle: "bet365 paga 1.33, il prezzo
+    giusto è 1.32" si capisce subito. Il vantaggio (EV) è un'etichetta più
+    piccola, perché di solito è un numero piccolo; le probabilità e il resto
+    stanno nella riga dei dettagli. top=True: una delle prime tre (verde pieno)."""
+    p, odds, ev = opp["_p"], opp["Quota migliore"], opp["_ev"]
+    fair_odds = 1 / p if p else float("nan")
     pm = opp.get("Prob. modello")
-    modello_txt = f" · nostro modello {pm:.0f}%" if pm is not None and pm == pm else ""
+    avviso = ""
     if ev > EV_SOSPETTO:
-        avviso = ('<div style="font-size:0.78rem; color:#E28F8F; margin-top:4px;">⚠️ Scarto '
-                  'molto grande dal mercato: più probabile un limite del modello (o una '
-                  'quota non aggiornata) che un vero affare. Verifica prima di giocare.</div>')
+        avviso = ('<div class="spot-warn">⚠️ Scarto molto grande dal mercato: più probabile '
+                  'una quota non aggiornata che un vero affare. Verifica prima di giocare.</div>')
+    modello = (f"<span>Nostro modello <b>{pm:.0f}%</b></span>" if pm is not None and pm == pm else "")
     render_html(f"""
-    <div class="spot-card">
-        <div class="spot-league">{opp['Campionato'].upper()}</div>
+    <div class="spot-card{' top' if top else ''}">
+        <div class="spot-league">{opp['Campionato']}, {opp['Data']}</div>
         <div class="spot-teams">{opp['Partita']}</div>
-        <div class="spot-ev-value">{opp['Valore atteso (EV)']}</div>
-        <div class="spot-ev-label">valore atteso — {opp['Esito']} · prob. giusta (Pinnacle) {opp['Nostra probabilità']:.0f}%{modello_txt}</div>
-        {avviso}
-        <div class="spot-details">
-            <span>Quota <b>{opp['Quota migliore']}</b></span>
-            <span>{opp['Bookmaker']} · {opp.get('Aggiornata', '')}</span>
+        <div class="spot-pick">{opp['Esito']}</div>
+        <div class="spot-price">
+            <div><span class="spot-odds">{odds:g}</span><span class="spot-book">{opp['Bookmaker']}</span></div>
+            <div class="spot-fair">prezzo giusto <b>{fair_odds:.2f}</b><br>
+                <span class="spot-edge">{ev:+.1%}</span></div>
         </div>
-        <div class="spot-details" style="margin-top:6px; border-top:none; padding-top:0;">
-            {risk_badge_html(opp['Quota migliore'])}
+        {avviso}
+        <div class="spot-meta">
+            <span>Pinnacle <b>{p:.0%}</b></span>
+            {modello}
+            <span>{opp.get('Aggiornata', '')}</span>
             <span>Kelly teorico <b>{opp['Puntata consigliata']}</b></span>
+            {risk_badge_html(odds)}
         </div>
     </div>
     """)
@@ -696,7 +771,7 @@ def compute_opportunities(conn, matches_df, min_ev, markets=None):
             all_opportunities.append({
                 "Partita": f"{row['home']} vs {row['away']}",
                 "Campionato": row["league"],
-                "Data": row["date"],
+                "Data": fmt_when(row["date"], row.get("kickoff_utc")),
                 "Esito": long_label(sel),
                 "Nostra probabilità": round(p * 100, 1),
                 "Prob. modello": round(model[sel] * 100, 1) if sel in model else None,
@@ -706,7 +781,7 @@ def compute_opportunities(conn, matches_df, min_ev, markets=None):
                 "Valore atteso (EV)": f"{ev:+.1%}",
                 "Puntata consigliata": f"{kelly_fraction(p, odds) * 100:.1f}%",
                 "Rischio": risk_label(odds),
-                "_ev_sort": ev,
+                "_ev_sort": ev, "_ev": ev, "_p": p,
             })
     return all_opportunities
 
@@ -725,88 +800,109 @@ if matches_df.empty:
              "Torna più tardi, oppure aggiorna i dati.")
     st.stop()
 
-tab_opportunita, tab_schedina, tab_storico, tab_marcatori, tab_tutte, tab_performance = st.tabs(
-    ["🎯 Opportunità di valore", "🎟️ Schedina", "📊 Storico schedine", "⚽ Marcatori",
-     "📋 Tutte le partite", "📈 Performance del modello"]
+tab_opportunita, tab_schedina, tab_marcatori, tab_storico, tab_analisi = st.tabs(
+    ["🎯 Opportunità", "🎟️ Schedina", "⚽ Marcatori", "📊 Storico", "📈 Analisi"]
 )
 
 # ---------------------------------------------------------------------------
 # SCHEDA 1: Opportunità di valore
 # ---------------------------------------------------------------------------
 with tab_opportunita:
-    filtered_opp = competition_filter(matches_df, key="comp_opportunita")
     mercati_verificabili = [m for m in MARKET_NAMES if m != "Marcatori"]
-    markets_opp = st.multiselect("Mercato:", mercati_verificabili, default=mercati_verificabili,
-                                 key="mercati_opportunita")
-    st.caption(
-        "Come si trova il valore: quando un bookmaker italiano paga più del prezzo "
-        "'giusto' di Pinnacle (il bookmaker più efficiente, margine tolto). Nel backtest "
-        "questa strategia ha avuto quote migliori della chiusura (CLV positivo), mentre "
-        "le previsioni del nostro modello, da sole, perdevano. Solo quote fino a "
-        f"{MAX_ODDS:g}: oltre, anche il 'valore' apparente perdeva. I marcatori non sono "
-        "qui perché Pinnacle non li quota e il nostro modello non è verificato.")
-
-    min_ev = st.slider("Mostra solo scommesse con valore atteso di almeno:",
-                        min_value=0, max_value=10, value=1, format="%d%%") / 100
+    f1, f2, f3 = st.columns([1, 1, 2])
+    with f1:
+        filtered_opp = competition_filter(matches_df, key="comp_opportunita")
+    with f2:
+        markets_opp = market_filter(mercati_verificabili, key="mercati_opportunita",
+                                    help="I marcatori non ci sono: Pinnacle non li quota, quindi "
+                                         "manca il prezzo giusto con cui confrontarli.")
+    with f3:
+        min_ev = st.slider("Vantaggio minimo sul prezzo giusto", min_value=0, max_value=10,
+                           value=0, format="%d%%") / 100
 
     all_opportunities = compute_opportunities(conn, filtered_opp, min_ev, markets_opp)
 
     if not all_opportunities:
-        st.info("Nessuna scommessa di valore trovata al momento con la soglia scelta. "
-                 "Prova ad abbassare la soglia qui sopra, oppure torna più tardi.")
+        st.info("Nessuna quota sopra il prezzo giusto con questi filtri. Abbassa il "
+                "vantaggio minimo o allarga competizioni e mercati.")
     else:
         opp_df = pd.DataFrame(all_opportunities).sort_values("_ev_sort", ascending=False)
-        opp_df = opp_df.drop(columns=["_ev_sort"])
-
-        st.subheader(f"{len(opp_df)} opportunità trovate, ordinate per convenienza")
+        n = len(opp_df)
+        st.subheader(f"{n} quote sopra il prezzo giusto" if n > 1 else "1 quota sopra il prezzo giusto")
 
         records = opp_df.to_dict("records")
         for i in range(0, len(records), 3):
             row_chunk = records[i:i + 3]
             cols = st.columns(3)
-            for col, opp in zip(cols, row_chunk):
+            for j, (col, opp) in enumerate(zip(cols, row_chunk)):
                 with col:
-                    render_spotlight_card(opp)
+                    render_spotlight_card(opp, top=(i + j) < 3)
             st.write("")
 
-        st.caption(
-            "Il 'valore atteso' è quanto ti aspetti di guadagnare in media, su tante "
-            "ripetizioni, puntando su questa scommessa — non è una garanzia sulla "
-            "singola partita. Il 'Kelly teorico' è la frazione del capitale che il "
-            "criterio di Kelly (frazionato, prudente) suggerirebbe SE le probabilità "
-            "del modello fossero esatte: finché il modello non è stato verificato sui "
-            "risultati passati, prendila come indicazione, non come consiglio. "
-            "Le quote si aggiornano una volta al giorno: prima di giocare controlla "
-            "che siano ancora quelle sul sito del bookmaker."
-        )
+    with st.expander("Come leggere queste schede"):
+        st.markdown(
+            f"""
+Ogni scheda confronta la **quota del bookmaker italiano** con il **prezzo giusto**:
+la quota di Pinnacle (il bookmaker più efficiente) senza il suo margine. Se il
+bookmaker paga più del prezzo giusto, la scommessa ha un piccolo vantaggio,
+indicato dall'etichetta in percentuale.
+
+- Nel backtest questa strategia ha preso quote migliori della chiusura (CLV
+  positivo); le previsioni del nostro modello, da sole, perdevano. Per questo la
+  probabilità del modello è solo un'informazione in più.
+- Solo quote fino a {MAX_ODDS:g}: oltre, anche il vantaggio apparente perdeva.
+- **Kelly teorico** è la frazione del capitale suggerita dal criterio di Kelly
+  (1/4, prudente) *se* il prezzo giusto fosse esatto. Il vantaggio non è ancora
+  dimostrato: meglio puntate piccole e uguali.
+- Le quote si aggiornano una volta al giorno: prima di giocare controlla che siano
+  ancora quelle sul sito del bookmaker.
+""")
 
 # ---------------------------------------------------------------------------
 # SCHEDA 2: Schedina (a mano, o trovata automaticamente) da un unico bookmaker
 # ---------------------------------------------------------------------------
-with tab_schedina:
-    st.caption(
-        "Una schedina reale va giocata tutta presso lo stesso bookmaker (non puoi "
-        "combinare una quota di un sito con una di un altro)."
-    )
+def step_title(n, text):
+    """Titolo di un passaggio numerato (la schedina si costruisce in sequenza)."""
+    st.markdown(f'<div class="step-title"><span class="step-num">{n}</span>{text}</div>',
+                unsafe_allow_html=True)
 
+
+SCHEDINA_MODI = [
+    ("🖐️ Scelgo io le partite", "🖐️ Manuale", "Scegli tu le selezioni, tra quelle con valore."),
+    ("🔍 Trova la combinazione migliore per me", "🔍 Obiettivo",
+     "Dici quanto vuoi vincere: trovo la combinazione più probabile che ci arriva."),
+    ("⚖️ Miglior equilibrio probabilità/valore", "⚖️ Equilibrio",
+     "Nessun obiettivo da fissare: trovo il miglior compromesso tra probabilità e valore."),
+]
+
+with tab_schedina:
     bookmakers = list_bookmakers(conn)
     if not bookmakers:
         st.info("Non ci sono ancora quote salvate per costruire una schedina.")
     else:
-        filtered_sched = competition_filter(matches_df, key="comp_schedina")
-
-        col_a, col_b = st.columns(2)
+        step_title(1, "Dove giochi")
+        col_a, col_b = st.columns([2, 1])
         with col_a:
-            selected_bookmaker = st.selectbox("Bookmaker:", bookmakers,
-                                               format_func=bookmaker_display_label, key="sched_bookmaker")
+            selected_bookmaker = st.selectbox("Bookmaker", bookmakers,
+                                               format_func=bookmaker_display_label, key="sched_bookmaker",
+                                               help="Una schedina va giocata tutta sullo stesso "
+                                                    "bookmaker: non si mescolano quote di siti diversi.")
         with col_b:
-            stake = st.number_input("Puntata (€):", min_value=1.0, value=10.0, step=1.0, key="sched_stake")
-        markets_sched = st.multiselect(
-            "Mercati da usare:", MARKET_NAMES,
-            default=[m for m in MARKET_NAMES if m != "Marcatori"], key="mercati_schedina",
-            help="Al massimo una selezione per partita: esiti della stessa partita "
-                 "(es. 1 e Over 2.5) sono legati tra loro e non si possono combinare "
-                 "come se fossero indipendenti.")
+            stake = st.number_input("Puntata (€)", min_value=1.0, value=10.0, step=1.0, key="sched_stake")
+
+        f1, f2, _ = st.columns([1, 1, 2])
+        with f1:
+            filtered_sched = competition_filter(matches_df, key="comp_schedina")
+        with f2:
+            markets_sched = market_filter(
+                MARKET_NAMES, key="mercati_schedina",
+                default=[m for m in MARKET_NAMES if m != "Marcatori"],
+                help="Al massimo una selezione per partita: esiti della stessa partita "
+                     "(es. 1 e Over 2.5) sono legati tra loro. I Marcatori sono in prova: "
+                     "il loro valore viene dal nostro modello, non verificato.")
+        if "Marcatori" in markets_sched:
+            st.caption("⚠️ Marcatori attivi: per questi il valore è stimato dal nostro modello, "
+                       "non verificato (Pinnacle non li quota). Considerali in prova.")
 
         def sched_probs(row):
             """Probabilità giuste da Pinnacle (non dal nostro modello: vedi il
@@ -833,13 +929,21 @@ with tab_schedina:
                                                      sched_scorer_preds, [selected_bookmaker])
                     if l["ev"] >= 0]
 
-        mode = st.radio(
-            "Come vuoi costruire la schedina?",
-            ["🖐️ Scelgo io le partite", "🔍 Trova la combinazione migliore per me",
-             "⚖️ Miglior equilibrio probabilità/valore"],
-            key="schedina_mode", horizontal=True,
-        )
-        st.divider()
+        step_title(2, "Come la costruisci")
+        if "schedina_mode" not in st.session_state:
+            st.session_state["schedina_mode"] = SCHEDINA_MODI[0][0]
+        mode = st.session_state["schedina_mode"]
+        for col, (valore, titolo, descr) in zip(st.columns(3), SCHEDINA_MODI):
+            with col:
+                scelto = mode == valore
+                st.markdown(f'<div class="mode-card{" on" if scelto else ""}"><div class="t">{titolo}</div>'
+                            f'<div class="d">{descr}</div></div>', unsafe_allow_html=True)
+                if st.button("✓ Scelta" if scelto else "Scegli", key=f"modo_{titolo}",
+                             type="primary" if scelto else "secondary", width="stretch"):
+                    st.session_state["schedina_mode"] = valore
+                    st.rerun()
+
+        step_title(3, "Scegli le selezioni" if mode.startswith("🖐️") else "Preferenze")
 
         combo = None
         target_roi_pct = None
@@ -863,7 +967,7 @@ with tab_schedina:
             else:
                 chosen = st.multiselect(
                     "Seleziona le partite da mettere in schedina:",
-                    options=list(candidate_legs.keys()),
+                    options=list(candidate_legs.keys()), placeholder="Scegli una o più selezioni",
                 )
                 if chosen:
                     combo, seen = [], set()
@@ -1191,11 +1295,10 @@ with tab_storico:
 # ---------------------------------------------------------------------------
 with tab_marcatori:
     st.caption(
-        "Probabilità che ogni giocatore segni almeno un gol, secondo il nostro modello "
-        "(distribuiamo i gol attesi della squadra tra i giocatori in base al loro "
-        "rendimento stagionale). Non c'è ancora un confronto con le quote reali dei "
-        "bookmaker su questo mercato specifico, quindi questa scheda ti aiuta a farti "
-        "un'idea, non calcola un valore atteso come le altre schede."
+        "In prova. Probabilità che ogni giocatore segni, secondo il nostro modello: i gol "
+        "attesi della squadra divisi tra i giocatori in base al loro rendimento. Il modello "
+        "non è ancora verificato sui risultati, e Pinnacle non quota i marcatori: il valore "
+        "atteso mostrato qui è solo indicativo."
     )
 
     try:
@@ -1215,9 +1318,9 @@ with tab_marcatori:
 
         # Filtri a cascata: ogni menu mostra solo le voci ancora possibili
         # dopo le scelte precedenti (competizione -> partita -> squadra).
-        df = competition_filter(df, key="comp_marcatori")
-
-        f1, f2 = st.columns(2)
+        f0, f1, f2 = st.columns([1, 1.5, 1.5])
+        with f0:
+            df = competition_filter(df, key="comp_marcatori")
         with f1:
             partite = ["Tutte le partite"] + sorted(df["partita"].unique(),
                                                     key=lambda p: (p[-11:], p))
@@ -1225,8 +1328,8 @@ with tab_marcatori:
         if partita != "Tutte le partite":
             df = df[df["partita"] == partita]
         with f2:
-            squadre = st.multiselect("Squadra (vuoto = tutte):", sorted(df["team"].unique()),
-                                     key="marc_squadre")
+            squadre = st.multiselect("Squadra:", sorted(df["team"].unique()),
+                                     key="marc_squadre", placeholder="Tutte")
         if squadre:
             df = df[df["team"].isin(squadre)]
 
@@ -1246,14 +1349,14 @@ with tab_marcatori:
                        "vedi le probabilità del nostro modello.")
             df["best_odds"], df["best_bookmaker"], df["ev"] = None, None, None
 
-        f3, f4, f5 = st.columns([2, 1, 1])
+        f3, f4, f5 = st.columns([1.5, 1.5, 1])
         with f3:
             min_prob = st.slider("Probabilità di segnare almeno:",
                                  min_value=0, max_value=80, value=20, format="%d%%",
                                  key="marc_prob") / 100
         with f4:
             ordini = ["Probabilità", "Gol attesi"] + (["Valore atteso"] if libri else [])
-            ordine = st.radio("Ordina per:", ordini, key="marc_ordine")
+            ordine = st.radio("Ordina per:", ordini, key="marc_ordine", horizontal=True)
         with f5:
             solo_titolari = st.checkbox("Solo probabili titolari", key="marc_titolari",
                                         help="Titolare in almeno 3 delle ultime 5 partite della squadra.")
@@ -1275,7 +1378,7 @@ with tab_marcatori:
                     "o ad allargare la selezione.")
         else:
             st.subheader(f"{len(df)} giocatori"
-                         + (f" — mostrati i primi {MAX_SCHEDE}" if len(df) > MAX_SCHEDE else ""))
+                         + (f", mostrati i primi {MAX_SCHEDE}" if len(df) > MAX_SCHEDE else ""))
             records = df.head(MAX_SCHEDE).to_dict("records")
             for i in range(0, len(records), 3):
                 row_chunk = records[i:i + 3]
@@ -1286,218 +1389,390 @@ with tab_marcatori:
                 st.write("")
 
 # ---------------------------------------------------------------------------
-# SCHEDA 5: Tutte le partite in arrivo
+# SCHEDA 5: Analisi — come sta andando (prova dal vivo, backtest) e tutte le partite
 # ---------------------------------------------------------------------------
-with tab_tutte:
-    filtered_df = competition_filter(matches_df, key="comp_tutte")
-
-    display_df = filtered_df.copy()
-    # Doppia chance: somma delle probabilità del modello per due esiti insieme.
-    # Nessun costo, nessuna nuova quota: sono solo i numeri che già abbiamo,
-    # sommati in modo diverso.
-    display_df["prob_1x"] = (display_df["prob_home"] + display_df["prob_draw"]) * 100
-    display_df["prob_x2"] = (display_df["prob_draw"] + display_df["prob_away"]) * 100
-    display_df["prob_12"] = (display_df["prob_home"] + display_df["prob_away"]) * 100
-    for col in ["prob_home", "prob_draw", "prob_away", "prob_btts", "prob_over25"]:
-        display_df[col] = display_df[col] * 100
-
-    percent_cols = ["Prob. 1", "Prob. X", "Prob. 2", "Prob. 1X", "Prob. X2", "Prob. 12",
-                    "Prob. Goal", "Prob. Over 2.5"]
-    st.dataframe(
-        display_df[["date", "league", "home", "away", "prob_home", "prob_draw", "prob_away",
-                     "prob_1x", "prob_x2", "prob_12", "prob_btts", "prob_over25"]]
-        .rename(columns={
-            "date": "Data", "league": "Campionato", "home": "Casa", "away": "Trasferta",
-            "prob_home": "Prob. 1", "prob_draw": "Prob. X", "prob_away": "Prob. 2",
-            "prob_1x": "Prob. 1X", "prob_x2": "Prob. X2", "prob_12": "Prob. 12",
-            "prob_btts": "Prob. Goal", "prob_over25": "Prob. Over 2.5",
-        }),
-        width='stretch', hide_index=True,
-        column_config={col: st.column_config.NumberColumn(col, format="%.0f%%") for col in percent_cols},
-    )
-    st.caption(
-        "1X = vittoria casa o pareggio · X2 = pareggio o vittoria trasferta · "
-        "12 = vittoria di una delle due squadre (esclude il pareggio) · "
-        "Goal = segnano entrambe. Sono le probabilità del nostro modello: il "
-        "confronto con le quote (e quindi la convenienza) è nella scheda "
-        "'Opportunità di valore'."
-    )
+def bootstrap_ci(values, reps=4000, seed=0):
+    """Intervallo al 95% della media, ricampionando i dati (bootstrap): dice
+    quanto potrebbe essere diverso il numero vero, dato il campione piccolo."""
+    import numpy as np
+    v = np.asarray([x for x in values if x == x], dtype=float)
+    if len(v) < 5:
+        return None
+    rng = np.random.default_rng(seed)
+    means = rng.choice(v, size=(reps, len(v)), replace=True).mean(axis=1)
+    return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
 
 
-# ---------------------------------------------------------------------------
-# SCHEDA 6: Performance del modello (risultati del backtest settimanale)
-# ---------------------------------------------------------------------------
-with tab_performance:
-    # --- Prova dal vivo: scommesse virtuali -------------------------------
-    st.subheader("Prova dal vivo: scommesse virtuali")
-    st.caption(
-        "Ogni giorno registriamo, senza giocare soldi, le quote dei bookmaker italiani "
-        "che superano il prezzo giusto di Pinnacle (quote fino a 5). "
-        "CLV = quanto la quota presa batteva l'ultimo prezzo di Pinnacle prima della "
-        "partita: è l'indicatore che si stabilizza prima (bastano poche centinaia di "
-        "scommesse), mentre il rendimento sui risultati richiede molto più tempo.")
+def semaforo(n):
+    """Quanto è affidabile un risultato, in base al numero di scommesse."""
+    if n < 50:
+        return "light-rosso", "Campione insufficiente"
+    if n < 200:
+        return "light-giallo", "Risultato preliminare"
+    return "light-verde", "Campione più affidabile"
+
+
+def ci_text(ci):
+    if ci is None:
+        return "troppo poche scommesse per un intervallo"
+    lo, hi = ci
+    tail = ("comprende lo zero: non si distingue ancora dalla fortuna" if lo < 0 < hi
+            else "non comprende lo zero")
+    return f"intervallo al 95%: da {lo:+.1%} a {hi:+.1%} ({tail})"
+
+
+def mini_list(title, df, key_col):
+    """Piccolo elenco "voce, CLV medio, numero" al posto di una tabella larga."""
+    righe = "".join(
+        f'<div><span>{r[key_col]}</span><span><b>{r["clv"]:+.1%}</b> '
+        f'<span class="n">{int(r["n"])} scomm.</span></span></div>'
+        for _, r in df.sort_values("n", ascending=False).iterrows())
+    render_html(f"""
+    <div class="verdict">
+        <div class="k">{title}</div>
+        <div class="mini-list">{righe}</div>
+    </div>
+    """)
+
+
+def load_virtual_bets(conn):
+    """Scommesse virtuali. Il CLV è definitivo solo quando la partita è
+    iniziata: prima, la "chiusura" è solo l'ultimo prezzo visto e il CLV è
+    provvisorio (appena registrata, coincide col vantaggio, quindi è sempre
+    positivo e non dice niente). Colonna 'definitiva' = partita iniziata."""
+    ko = "m.kickoff_utc" if has_kickoff(conn) else "NULL"
     try:
-        vb = pd.read_sql_query("""
+        vb = pd.read_sql_query(f"""
             SELECT v.*, m.home_goals, m.away_goals, m.date, m.league,
-                   h.name AS home, a.name AS away
+                   h.name AS home, a.name AS away,
+                   (m.home_goals IS NOT NULL
+                    OR ({ko} IS NOT NULL AND {ko} <= datetime('now'))
+                    OR ({ko} IS NULL AND m.date < date('now'))) AS definitiva
             FROM virtual_bets v JOIN matches m ON m.id = v.match_id
             JOIN teams h ON h.id = m.home_team_id JOIN teams a ON a.id = m.away_team_id
         """, conn)
     except Exception:
-        vb = pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
     if vb.empty:
-        st.info("Nessuna scommessa virtuale ancora registrata: la raccolta parte dal "
-                "prossimo aggiornamento delle quote.")
-    else:
-        vb["clv"] = vb["odds"] * vb["close_fair_prob"] - 1
-        chiuse = vb[vb["home_goals"].notna()].copy()
-        if not chiuse.empty:
-            chiuse["vinta"] = [is_winner(s_, int(h), int(a)) for s_, h, a in
-                               zip(chiuse["selection"], chiuse["home_goals"], chiuse["away_goals"])]
-            chiuse["profitto"] = [o - 1 if w else -1 for o, w in zip(chiuse["odds"], chiuse["vinta"])]
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Scommesse virtuali", len(vb))
-        m2.metric("Concluse", len(chiuse))
-        m3.metric("CLV medio", f"{vb['clv'].mean():+.1%}",
-                  help="Positivo = le quote trovate battevano il prezzo finale di Pinnacle.")
-        m4.metric("Rendimento (concluse)",
-                  f"{chiuse['profitto'].mean():+.1%}" if not chiuse.empty else "—",
-                  help="Profitto medio per unità puntata. Con poche scommesse è molto "
-                       "influenzato dalla fortuna: guarda soprattutto il CLV.")
-        if has_kickoff(conn):
-            ko = pd.read_sql_query("SELECT id AS match_id, kickoff_utc FROM matches "
-                                   "WHERE kickoff_utc IS NOT NULL", conn)
-            vk = vb.merge(ko, on="match_id", how="inner")
-            vk = vk[vk["home_goals"].notna() | (pd.to_datetime(vk["kickoff_utc"], utc=True)
-                                                 <= pd.Timestamp.now(tz="UTC"))]
-            if not vk.empty:
-                anticipo = ((pd.to_datetime(vk["kickoff_utc"], utc=True)
-                             - pd.to_datetime(vk["close_updated_at"], utc=True, format="ISO8601"))
-                            .dt.total_seconds() / 60)
-                vicine = (anticipo <= 60).mean()
-                st.caption(
-                    f"Chiusura delle scommesse già iniziate: presa in mediana "
-                    f"{anticipo.median():.0f} minuti prima del calcio d'inizio; entro un'ora "
-                    f"per il {vicine:.0%} delle scommesse. Più è vicina all'inizio, più il "
-                    f"CLV è affidabile.")
-        per_book = vb.groupby("bookmaker").agg(scommesse=("id", "count"),
-                                               clv_medio=("clv", "mean")).reset_index()
-        per_book["clv_medio"] = (per_book["clv_medio"] * 100).round(1)
-        st.dataframe(per_book.rename(columns={"bookmaker": "Bookmaker", "scommesse": "Scommesse",
-                                              "clv_medio": "CLV medio %"}),
-                     hide_index=True, width='stretch')
-        with st.expander("Ultime scommesse virtuali"):
-            ultime = vb.sort_values("found_at", ascending=False).head(50)
-            st.dataframe(pd.DataFrame({
-                "Data": ultime["date"], "Partita": ultime["home"] + " - " + ultime["away"],
-                "Esito": [long_label(x) for x in ultime["selection"]],
-                "Bookmaker": ultime["bookmaker"], "Quota": ultime["odds"],
-                "Vantaggio %": (ultime["edge"] * 100).round(1),
-                "CLV %": (ultime["clv"] * 100).round(1),
-            }), hide_index=True, width='stretch')
-    st.divider()
+        return vb, vb
+    vb["definitiva"] = vb["definitiva"].astype(bool)
+    vb["clv"] = vb["odds"] * vb["close_fair_prob"] - 1
+    vb["mercato"] = [market_of(x) for x in vb["selection"]]
+    chiuse = vb[vb["home_goals"].notna()].copy()
+    if not chiuse.empty:
+        chiuse["vinta"] = [is_winner(s_, int(h), int(a)) for s_, h, a in
+                           zip(chiuse["selection"], chiuse["home_goals"], chiuse["away_goals"])]
+        chiuse["profitto"] = [o - 1 if w else -1 for o, w in zip(chiuse["odds"], chiuse["vinta"])]
+    return vb, chiuse
 
+
+def load_backtest():
     try:
         with open("backtest_report.json") as f:
-            bt = json.load(f)
+            return json.load(f)
     except (FileNotFoundError, ValueError):
-        bt = None
+        return None
 
-    if bt is None:
-        st.info("Il backtest non è ancora stato eseguito. Gira in automatico una volta a "
-                "settimana (workflow 'Backtest'), oppure puoi avviarlo a mano da GitHub Actions.")
-    else:
+
+def strategia_app_nel_backtest(bt):
+    """Risultato nel backtest della strategia usata dall'app: quota sopra il
+    prezzo giusto di Pinnacle (margine tolto col metodo potenza), quote fino a 5."""
+    rows = (bt or {}).get("contro_pinnacle", {}).get("1x2_quota_massima_potenza") or []
+    rows = [r for r in rows if str(r.get("soglia_vantaggio", "")).startswith("+0%")
+            and "oltre" not in str(r.get("soglia_vantaggio", ""))]
+    n = sum(r["scommesse"] for r in rows)
+    if not n:
+        return None
+    roi = sum(r["roi"] * r["scommesse"] for r in rows) / n
+    clv_rows = [r for r in rows if r.get("clv_medio") is not None]
+    clv = (sum(r["clv_medio"] * r["scommesse"] for r in clv_rows)
+           / sum(r["scommesse"] for r in clv_rows)) if clv_rows else None
+    return n, roi, clv
+
+
+with tab_analisi:
+    vb, chiuse = load_virtual_bets(conn)
+    bt = load_backtest()
+    sub_panoramica, sub_live, sub_backtest, sub_calibrazione, sub_tutte = st.tabs(
+        ["Panoramica", "Prova dal vivo", "Backtest", "Calibrazione", "Tutte le partite"])
+
+    # --- Panoramica: il sistema sta funzionando? --------------------------
+    with sub_panoramica:
+        c_live, c_bt = st.columns(2)
+        with c_live:
+            if vb.empty:
+                render_html("""
+                <div class="verdict">
+                    <div class="k">Prova dal vivo, CLV medio</div>
+                    <div class="big">—</div>
+                    <div class="sub">Nessuna scommessa virtuale ancora registrata.</div>
+                </div>""")
+            else:
+                fin = vb[vb["definitiva"]]
+                cls, testo = semaforo(len(fin))
+                attesa = len(vb) - len(fin)
+                render_html(f"""
+                <div class="verdict">
+                    <div class="k">Prova dal vivo, CLV medio</div>
+                    <div class="big">{f"{fin['clv'].mean():+.1%}" if len(fin) else "—"}</div>
+                    <div class="sub">{len(fin)} scommesse con chiusura definitiva,
+                        {attesa} in attesa dell'inizio della partita</div>
+                    <div class="ci">{ci_text(bootstrap_ci(fin['clv'])) if len(fin) else
+                        "il CLV si misura quando le partite iniziano"}</div>
+                    <span class="light-badge {cls}">{testo}</span>
+                </div>""")
+        with c_bt:
+            if bt is None:
+                render_html("""
+                <div class="verdict">
+                    <div class="k">Backtest</div>
+                    <div class="big">—</div>
+                    <div class="sub">Non ancora eseguito (gira ogni lunedì).</div>
+                </div>""")
+            else:
+                ll = bt["1x2"]["log_loss"]
+                tot = bt["1x2"].get("totale_modello") or {}
+                roi_txt = f"{tot['roi']:+.0%}" if tot.get("roi") is not None else "—"
+                n_partite = f"{bt['partite_valutate']:,}".replace(",", ".")
+                n_scomm = f"{tot.get('scommesse', 0):,}".replace(",", ".")
+                render_html(f"""
+                <div class="verdict">
+                    <div class="k">Backtest su {n_partite} partite</div>
+                    <div class="big">{roi_txt}</div>
+                    <div class="sub">rendimento scommettendo sui valori del nostro modello
+                        ({n_scomm} scommesse)</div>
+                    <div class="ci">errore di previsione (log loss, più basso è meglio):
+                        modello {ll['modello']:.3f}, Pinnacle {ll['pinnacle_chiusura']:.3f}</div>
+                </div>""")
+
+        if bt is not None:
+            ll = bt["1x2"]["log_loss"]
+            testo = ("Pinnacle prevede meglio del nostro modello. Per questo l'app usa Pinnacle "
+                     "come prezzo giusto e mostra il modello solo come informazione in più."
+                     if ll["modello"] > ll["pinnacle_chiusura"] else
+                     "Il modello prevede quanto o meglio di Pinnacle: vale la pena ridargli peso.")
+            st.write("")
+            st.markdown(f"**{testo}**")
+            app = strategia_app_nel_backtest(bt)
+            if app:
+                n_app, roi_app, clv_app = app
+                st.caption(
+                    f"La strategia usata dall'app (quota sopra il prezzo giusto di Pinnacle, quote "
+                    f"fino a {MAX_ODDS:g}) nel backtest: rendimento {roi_app:+.1%}"
+                    + (f", CLV {clv_app:+.1%}" if clv_app is not None else "")
+                    + f" su {n_app:,} scommesse. ".replace(",", ".")
+                    + "Attenzione: usa la quota migliore tra ~40 bookmaker, più generosa dei 4 "
+                      "italiani. È la prova dal vivo a dire se regge anche da noi.")
+
+    # --- Prova dal vivo ---------------------------------------------------
+    with sub_live:
         st.caption(
-            f"Simulazione su {bt['partite_valutate']} partite dei 5 campionati principali "
-            f"({bt['periodo']['da']} → {bt['periodo']['a']}): ogni mese il modello è stato "
-            "allenato solo sulle partite precedenti e ha previsto quelle del mese, come fa "
-            "l'app ogni giorno. Aggiornato: " + bt["generato"][:10] + ".")
+            "Ogni giorno registriamo, senza giocare soldi, le quote dei bookmaker italiani "
+            "che superano il prezzo giusto di Pinnacle (quote fino a 5). CLV = quanto la "
+            "quota presa batteva il prezzo di Pinnacle poco prima della partita: si "
+            "stabilizza con poche centinaia di scommesse, il rendimento ne richiede molte di più.")
+        if vb.empty:
+            st.info("Nessuna scommessa virtuale ancora registrata: la raccolta parte dal "
+                    "prossimo aggiornamento delle quote.")
+        else:
+            fin = vb[vb["definitiva"]]
+            cls, testo = semaforo(len(fin))
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Scommesse virtuali", len(vb),
+                      help="Tutte quelle registrate, anche su partite non ancora iniziate.")
+            m2.metric("Con chiusura definitiva", len(fin),
+                      help="Partite iniziate: il prezzo di chiusura di Pinnacle non cambia più.")
+            m3.metric("CLV medio", f"{fin['clv'].mean():+.1%}" if len(fin) else "—",
+                      help="Solo sulle chiusure definitive. Positivo = le quote trovate "
+                           "battevano il prezzo finale di Pinnacle.")
+            m4.metric("Rendimento (concluse)",
+                      f"{chiuse['profitto'].mean():+.1%}" if not chiuse.empty else "—",
+                      help="Profitto medio per unità puntata. Con poche scommesse dipende "
+                           "molto dalla fortuna: guarda soprattutto il CLV.")
+            render_html(f'<span class="light-badge {cls}">{testo}: {len(fin)} scommesse con '
+                        f'chiusura definitiva (ne servono almeno 200 per un giudizio)</span>')
+            if len(fin):
+                st.caption(f"CLV: {ci_text(bootstrap_ci(fin['clv']))}.")
+            else:
+                st.caption("Il CLV si misura quando le partite iniziano: finché una partita "
+                           "non comincia, la chiusura di Pinnacle può ancora cambiare.")
+            if not chiuse.empty:
+                st.caption(f"Rendimento: {ci_text(bootstrap_ci(chiuse['profitto']))}.")
+            if has_kickoff(conn):
+                ko = pd.read_sql_query("SELECT id AS match_id, kickoff_utc FROM matches "
+                                       "WHERE kickoff_utc IS NOT NULL", conn)
+                vk = vb.merge(ko, on="match_id", how="inner")
+                vk = vk[vk["home_goals"].notna() | (pd.to_datetime(vk["kickoff_utc"], utc=True)
+                                                     <= pd.Timestamp.now(tz="UTC"))]
+                if not vk.empty:
+                    anticipo = ((pd.to_datetime(vk["kickoff_utc"], utc=True)
+                                 - pd.to_datetime(vk["close_updated_at"], utc=True, format="ISO8601"))
+                                .dt.total_seconds() / 60)
+                    prima = anticipo[anticipo >= 0]
+                    dopo = int((anticipo < 0).sum())
+                    testo_ch = (f"Chiusura delle scommesse già iniziate: presa in mediana "
+                                f"{prima.median():.0f} minuti prima del calcio d'inizio; entro "
+                                f"un'ora per il {(prima <= 60).mean():.0%}. Più è vicina "
+                                f"all'inizio, più il CLV è affidabile." if len(prima) else "")
+                    if dopo:
+                        testo_ch += (f" {dopo} scommesse hanno una chiusura presa dopo l'inizio "
+                                     f"(registrate prima della correzione): il loro CLV è meno affidabile.")
+                    st.caption(testo_ch.strip())
 
-        ll = bt["1x2"]["log_loss"]
-        scarto = ll["modello"] / ll["pinnacle_chiusura"] - 1
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Errore del modello (log loss 1X2)", f"{ll['modello']:.4f}",
-                  help="Più basso è meglio. Misura quanto le probabilità erano lontane dai risultati.")
-        c2.metric("Errore di Pinnacle alla chiusura", f"{ll['pinnacle_chiusura']:.4f}",
-                  help="Il prezzo più efficiente del mercato: il riferimento da battere.")
-        c3.metric("Modello rispetto a Pinnacle", f"{scarto:+.1%}",
-                  help="Positivo = il modello sbaglia più del mercato.")
-        if scarto > 0:
-            st.warning(
-                "Il modello, da solo, prevede peggio del mercato. È normale per un modello "
-                "basato solo sui risultati: significa che gran parte del 'valore' che trova "
-                "è in realtà errore del modello, non un vantaggio reale. Guarda sotto la "
-                "miscela modello/mercato e il ROI per fascia di valore atteso.")
+            if len(fin):
+                g1, g2 = st.columns(2)
+                with g1:
+                    mini_list("CLV per bookmaker",
+                              fin.groupby("bookmaker").agg(clv=("clv", "mean"), n=("id", "count"))
+                              .reset_index(), "bookmaker")
+                with g2:
+                    mini_list("CLV per mercato",
+                              fin.groupby("mercato").agg(clv=("clv", "mean"), n=("id", "count"))
+                              .reset_index(), "mercato")
+                st.write("")
+            with st.expander("Ultime scommesse virtuali"):
+                ultime = vb.sort_values("found_at", ascending=False).head(50)
+                st.dataframe(pd.DataFrame({
+                    "Data": ultime["date"], "Partita": ultime["home"] + " - " + ultime["away"],
+                    "Esito": [long_label(x) for x in ultime["selection"]],
+                    "Bookmaker": ultime["bookmaker"], "Quota": ultime["odds"],
+                    "Vantaggio %": (ultime["edge"] * 100).round(1),
+                    "CLV %": [round(c * 100, 1) if d else None
+                              for c, d in zip(ultime["clv"], ultime["definitiva"])],
+                }), hide_index=True, width='stretch')
+                st.caption("CLV vuoto = partita non ancora iniziata.")
 
-        st.subheader("Calibrazione (1X2)")
-        st.caption("Per ogni fascia di probabilità prevista: quante volte l'esito si è "
-                   "verificato davvero. Un modello ben calibrato ha le due colonne simili.")
-        cal = pd.DataFrame(bt["1x2"]["calibrazione"])
-        if not cal.empty:
-            st.dataframe(cal.rename(columns={"fascia": "Fascia", "n": "Esiti", "prevista":
-                                             "Prob. prevista", "reale": "Frequenza reale"}),
-                         hide_index=True, width='stretch')
-            st.line_chart(cal.set_index("fascia")[["prevista", "reale"]])
+    def bet_table(rows):
+        df = pd.DataFrame(rows)
+        if df.empty:
+            return df
+        for c in ("vinte", "roi", "clv_medio"):
+            df[c] = (df[c] * 100).round(1)
+        return df.rename(columns={"fascia_ev": "Fascia EV", "scommesse": "Scommesse",
+                                  "vinte": "Vinte %", "roi": "ROI %", "clv_medio": "CLV medio %"})
 
-        st.subheader("Scommettere dove il modello vede valore")
-        st.caption("1 unità su ogni esito con valore atteso positivo, alle quote medie dei "
-                   "bookmaker qualche giorno prima della partita. CLV = quanto la quota "
-                   "presa batteva la quota finale di Pinnacle senza margine: se è positivo "
-                   "in media, il vantaggio è probabilmente reale e non fortuna.")
-        def bet_table(rows):
-            df = pd.DataFrame(rows)
-            if df.empty:
-                return df
-            for c in ("vinte", "roi", "clv_medio"):
-                df[c] = (df[c] * 100).round(1)
-            return df.rename(columns={"fascia_ev": "Fascia EV", "scommesse": "Scommesse",
-                                      "vinte": "Vinte %", "roi": "ROI %", "clv_medio": "CLV medio %"})
-        st.markdown("**Solo modello**")
-        st.dataframe(bet_table(bt["1x2"]["scommesse_modello"]), hide_index=True, width='stretch')
-        if bt["1x2"].get("scommesse_miscela"):
-            w = bt["1x2"]["peso_modello_migliore"]
-            st.markdown(f"**Miscela: {w:.0%} modello + {1 - w:.0%} mercato (Pinnacle prima della partita)**")
-            st.dataframe(bet_table(bt["1x2"]["scommesse_miscela"]), hide_index=True, width='stretch')
+    # --- Backtest ----------------------------------------------------------
+    with sub_backtest:
+        if bt is None:
+            st.info("Il backtest non è ancora stato eseguito. Gira in automatico ogni lunedì "
+                    "(workflow 'Backtest'), oppure puoi avviarlo a mano da GitHub Actions.")
+        else:
+            st.caption(
+                f"Simulazione su {bt['partite_valutate']} partite dei 5 campionati principali "
+                f"({bt['periodo']['da']} → {bt['periodo']['a']}): ogni mese il modello è stato "
+                "allenato solo sulle partite precedenti e ha previsto quelle del mese, come fa "
+                "l'app ogni giorno. Aggiornato: " + bt["generato"][:10] + ".")
+            ll = bt["1x2"]["log_loss"]
+            scarto = ll["modello"] / ll["pinnacle_chiusura"] - 1
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Errore del modello (log loss 1X2)", f"{ll['modello']:.4f}",
+                      help="Più basso è meglio. Misura quanto le probabilità erano lontane dai risultati.")
+            c2.metric("Errore di Pinnacle alla chiusura", f"{ll['pinnacle_chiusura']:.4f}",
+                      help="Il prezzo più efficiente del mercato: il riferimento da battere.")
+            c3.metric("Modello rispetto a Pinnacle", f"{scarto:+.1%}",
+                      help="Positivo = il modello sbaglia più del mercato.")
 
-        st.subheader("Quanto fidarsi del modello rispetto al mercato")
-        st.caption("Errore (log loss) delle previsioni che mescolano modello e quote di "
-                   "Pinnacle con pesi diversi. Il peso con l'errore più basso dice quanto "
-                   "il modello aggiunge informazione rispetto al mercato.")
-        st.dataframe(pd.DataFrame(bt["1x2"]["miscela"]).rename(
-            columns={"peso_modello": "Peso del modello", "log_loss": "Log loss"}),
-            hide_index=True, width='stretch')
+            if bt.get("contro_pinnacle"):
+                st.subheader("Strategia dell'app: bookmaker contro Pinnacle")
+                st.caption("Si gioca quando la quota di un bookmaker supera la quota 'giusta' di "
+                           "Pinnacle (senza margine) nello stesso momento. Nessuna previsione "
+                           "nostra. 'Quota massima' = la migliore tra tutti i bookmaker del file "
+                           "(include siti non disponibili in Italia).")
+                nomi = {"1x2_bet365": "1X2, bet365", "1x2_quota_massima": "1X2, quota massima",
+                        "ou25_bet365": "Under/Over 2.5, bet365",
+                        "ou25_quota_massima": "Under/Over 2.5, quota massima",
+                        "1x2_quota_massima_potenza": "1X2, quota massima (margine 'potenza')",
+                        "ou25_quota_massima_potenza": "Under/Over 2.5, quota massima (margine 'potenza')"}
+                righe = []
+                for chiave, rows in bt["contro_pinnacle"].items():
+                    for r in rows:
+                        righe.append({"Strategia": nomi.get(chiave, chiave),
+                                      "Soglia": r["soglia_vantaggio"], "Scommesse": r["scommesse"],
+                                      "ROI %": round(r["roi"] * 100, 1),
+                                      "CLV medio %": round(r["clv_medio"] * 100, 1)
+                                      if r["clv_medio"] is not None else None})
+                st.dataframe(pd.DataFrame(righe), hide_index=True, width='stretch')
 
-        if bt.get("contro_pinnacle"):
-            st.subheader("Strategia senza modello: bookmaker contro Pinnacle")
-            st.caption("Si gioca quando la quota di un bookmaker supera la quota 'giusta' di "
-                       "Pinnacle (senza margine) nello stesso momento, almeno della soglia "
-                       "indicata. Nessuna previsione nostra: Pinnacle fa da stima della "
-                       "probabilità vera. 'Quota massima' = la migliore tra tutti i "
-                       "bookmaker del file (include anche siti non disponibili in Italia).")
-            nomi = {"1x2_bet365": "1X2 · bet365", "1x2_quota_massima": "1X2 · quota massima",
-                    "ou25_bet365": "Under/Over 2.5 · bet365",
-                    "ou25_quota_massima": "Under/Over 2.5 · quota massima",
-                    "1x2_quota_massima_potenza": "1X2 · quota massima (margine 'potenza')",
-                    "ou25_quota_massima_potenza": "Under/Over 2.5 · quota massima (margine 'potenza')"}
-            righe = []
-            for chiave, rows in bt["contro_pinnacle"].items():
-                for r in rows:
-                    righe.append({"Strategia": nomi.get(chiave, chiave),
-                                  "Soglia": r["soglia_vantaggio"], "Scommesse": r["scommesse"],
-                                  "ROI %": round(r["roi"] * 100, 1),
-                                  "CLV medio %": round(r["clv_medio"] * 100, 1)
-                                  if r["clv_medio"] is not None else None})
-            st.dataframe(pd.DataFrame(righe), hide_index=True, width='stretch')
+            st.subheader("Scommettere dove il nostro modello vede valore")
+            st.caption("1 unità su ogni esito con valore atteso positivo secondo il modello, "
+                       "alle quote medie qualche giorno prima della partita.")
+            st.dataframe(bet_table(bt["1x2"]["scommesse_modello"]), hide_index=True, width='stretch')
+            if bt["1x2"].get("scommesse_miscela"):
+                w = bt["1x2"]["peso_modello_migliore"]
+                st.markdown(f"**Miscela: {w:.0%} modello + {1 - w:.0%} mercato**")
+                st.dataframe(bet_table(bt["1x2"]["scommesse_miscela"]), hide_index=True, width='stretch')
 
-        with st.expander("Under/Over 2.5 e Goal/No Goal"):
-            ou = bt["over_under_2_5"]
-            if ou.get("log_loss"):
-                st.write(f"Log loss Under/Over 2.5 — modello {ou['log_loss']['modello']:.4f}, "
-                         f"Pinnacle chiusura {ou['log_loss']['pinnacle_chiusura']:.4f}")
-            st.dataframe(pd.DataFrame(ou["calibrazione"]), hide_index=True, width='stretch')
-            st.dataframe(bet_table(ou["scommesse_modello"]), hide_index=True, width='stretch')
-            st.markdown("**Goal/No Goal — calibrazione** (per questo mercato lo storico non ha quote)")
-            st.dataframe(pd.DataFrame(bt["goal_no_goal"]["calibrazione"]), hide_index=True,
-                         width='stretch')
-        with st.expander("Per campionato"):
-            st.dataframe(pd.DataFrame(bt["per_campionato_log_loss"]).T, width='stretch')
+            with st.expander("Quanto fidarsi del modello rispetto al mercato"):
+                st.caption("Errore (log loss) delle previsioni che mescolano modello e quote di "
+                           "Pinnacle con pesi diversi. Il peso con l'errore più basso dice quanto "
+                           "il modello aggiunge informazione rispetto al mercato.")
+                st.dataframe(pd.DataFrame(bt["1x2"]["miscela"]).rename(
+                    columns={"peso_modello": "Peso del modello", "log_loss": "Log loss"}),
+                    hide_index=True, width='stretch')
+            with st.expander("Under/Over 2.5"):
+                ou = bt["over_under_2_5"]
+                if ou.get("log_loss"):
+                    st.write(f"Log loss Under/Over 2.5: modello {ou['log_loss']['modello']:.4f}, "
+                             f"Pinnacle chiusura {ou['log_loss']['pinnacle_chiusura']:.4f}")
+                st.dataframe(bet_table(ou["scommesse_modello"]), hide_index=True, width='stretch')
+            with st.expander("Per campionato"):
+                st.dataframe(pd.DataFrame(bt["per_campionato_log_loss"]).T, width='stretch')
+
+    # --- Calibrazione --------------------------------------------------------
+    with sub_calibrazione:
+        if bt is None:
+            st.info("Disponibile dopo il primo backtest.")
+        else:
+            st.caption("Per ogni fascia di probabilità prevista dal nostro modello: quante volte "
+                       "l'esito si è verificato davvero. Un modello ben calibrato ha le due linee vicine.")
+            cal = pd.DataFrame(bt["1x2"]["calibrazione"])
+            if not cal.empty:
+                st.subheader("1X2")
+                st.line_chart(cal.set_index("fascia")[["prevista", "reale"]])
+                with st.expander("Tabella"):
+                    st.dataframe(cal.rename(columns={"fascia": "Fascia", "n": "Esiti",
+                                                     "prevista": "Prob. prevista",
+                                                     "reale": "Frequenza reale"}),
+                                 hide_index=True, width='stretch')
+            with st.expander("Under/Over 2.5 e Goal/No Goal"):
+                st.dataframe(pd.DataFrame(bt["over_under_2_5"]["calibrazione"]),
+                             hide_index=True, width='stretch')
+                st.markdown("**Goal/No Goal** (per questo mercato lo storico non ha quote)")
+                st.dataframe(pd.DataFrame(bt["goal_no_goal"]["calibrazione"]), hide_index=True,
+                             width='stretch')
+
+    # --- Tutte le partite ---------------------------------------------------
+    with sub_tutte:
+        filtered_df = competition_filter(matches_df, key="comp_tutte")
+
+        display_df = filtered_df.copy()
+        # Doppia chance: somma delle probabilità del modello per due esiti insieme.
+        # Nessun costo, nessuna nuova quota: sono solo i numeri che già abbiamo,
+        # sommati in modo diverso.
+        display_df["prob_1x"] = (display_df["prob_home"] + display_df["prob_draw"]) * 100
+        display_df["prob_x2"] = (display_df["prob_draw"] + display_df["prob_away"]) * 100
+        display_df["prob_12"] = (display_df["prob_home"] + display_df["prob_away"]) * 100
+        for col in ["prob_home", "prob_draw", "prob_away", "prob_btts", "prob_over25"]:
+            display_df[col] = display_df[col] * 100
+
+        percent_cols = ["Prob. 1", "Prob. X", "Prob. 2", "Prob. 1X", "Prob. X2", "Prob. 12",
+                        "Prob. Goal", "Prob. Over 2.5"]
+        st.dataframe(
+            display_df[["date", "league", "home", "away", "prob_home", "prob_draw", "prob_away",
+                         "prob_1x", "prob_x2", "prob_12", "prob_btts", "prob_over25"]]
+            .rename(columns={
+                "date": "Data", "league": "Campionato", "home": "Casa", "away": "Trasferta",
+                "prob_home": "Prob. 1", "prob_draw": "Prob. X", "prob_away": "Prob. 2",
+                "prob_1x": "Prob. 1X", "prob_x2": "Prob. X2", "prob_12": "Prob. 12",
+                "prob_btts": "Prob. Goal", "prob_over25": "Prob. Over 2.5",
+            }),
+            width='stretch', hide_index=True,
+            column_config={col: st.column_config.NumberColumn(col, format="%.0f%%") for col in percent_cols},
+        )
+        st.caption(
+            "1X = vittoria casa o pareggio · X2 = pareggio o vittoria trasferta · "
+            "12 = vittoria di una delle due squadre (esclude il pareggio) · "
+            "Goal = segnano entrambe. Sono le probabilità del nostro modello: il "
+            "confronto con le quote (e quindi la convenienza) è nella scheda "
+            "'Opportunità'."
+        )
