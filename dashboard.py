@@ -231,8 +231,31 @@ def get_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 
+# Una quota più vecchia di FRESH_HOURS rispetto all'ultimo aggiornamento della
+# stessa partita non viene usata: vuol dire che il bookmaker non l'ha più
+# riproposta (esito tolto, o fonte che non ha risposto) e potrebbe non
+# essere più giocabile. Ogni giro "rinfresca" l'orario delle quote ancora
+# valide, anche se non sono cambiate.
+FRESH_HOURS = 3
+
+
+def has_kickoff(conn):
+    """True se il database ha già la colonna dell'orario di inizio (la crea il
+    primo aggiornamento automatico dopo questa versione)."""
+    return "kickoff_utc" in [r[1] for r in conn.execute("PRAGMA table_info(matches)")]
+
+
+def not_started_sql(conn, alias="m"):
+    """Condizione SQL: partita non ancora iniziata (per orario se lo
+    conosciamo, altrimenti per data come prima)."""
+    if has_kickoff(conn):
+        return (f"({alias}.kickoff_utc > datetime('now') OR "
+                f"({alias}.kickoff_utc IS NULL AND {alias}.date >= date('now')))")
+    return f"{alias}.date >= date('now')"
+
+
 def load_upcoming_with_predictions(conn):
-    query = """
+    query = f"""
         SELECT m.id, m.date, m.league, h.name AS home, a.name AS away,
                p.prob_home, p.prob_draw, p.prob_away,
                p.prob_btts, p.prob_over15, p.prob_over25, p.prob_over35
@@ -240,7 +263,7 @@ def load_upcoming_with_predictions(conn):
         JOIN teams h ON m.home_team_id = h.id
         JOIN teams a ON m.away_team_id = a.id
         JOIN model_predictions p ON p.match_id = m.id
-        WHERE m.date >= date('now') AND m.home_goals IS NULL
+        WHERE {not_started_sql(conn)} AND m.home_goals IS NULL
         ORDER BY m.date
     """
     return pd.read_sql_query(query, conn)
@@ -265,9 +288,13 @@ def best_odds_for_match(conn, match_id):
             FROM odds_snapshots
             WHERE match_id = ?
         )
-        SELECT selection, odds, bookmaker, snapshot_time FROM ultima_quota WHERE rn = 1
+        SELECT selection, odds, bookmaker, snapshot_time FROM ultima_quota
+        WHERE rn = 1 AND datetime(snapshot_time) >= datetime(
+            (SELECT MAX(snapshot_time) FROM odds_snapshots WHERE match_id = ?),
+            '-{FRESH_HOURS} hours')
     """
-    rows = conn.execute(query, (match_id,)).fetchall()
+    rows = conn.execute(query.replace("{FRESH_HOURS}", str(FRESH_HOURS)),
+                        (match_id, match_id)).fetchall()
     # Quote "anomale": se almeno 3 bookmaker quotano un esito e uno è molto
     # sopra gli altri (oltre il 30% sopra la mediana), è quasi sempre un
     # errore della fonte o una quota vecchia non più disponibile, non un
@@ -346,12 +373,17 @@ def bookmaker_display_label(bookmaker):
 def odds_by_bookmaker_for_match(conn, match_id, bookmaker):
     """Le quote di UN SOLO bookmaker per una partita (la più recente per
     ciascun esito, se ne abbiamo registrate più di una nel tempo)."""
-    query = """
+    query = f"""
         SELECT selection, odds FROM odds_snapshots
         WHERE match_id = ? AND bookmaker = ?
+          AND datetime(snapshot_time) >= datetime(
+              (SELECT MAX(snapshot_time) FROM odds_snapshots WHERE match_id = ?),
+              '-{FRESH_HOURS} hours')
         ORDER BY snapshot_time DESC
     """
-    rows = conn.execute(query, (match_id, bookmaker)).fetchall()
+    # le quote non più riproposte dal bookmaker (vedi FRESH_HOURS) restano
+    # fuori; tra le altre si tiene la più recente per ogni esito
+    rows = conn.execute(query, (match_id, bookmaker, match_id)).fetchall()
     odds = {}
     for selection, o in rows:
         if selection not in odds:
@@ -386,7 +418,7 @@ BOOKMAKER_CLONI = {
 
 def load_upcoming_player_predictions(conn):
     """Previsioni marcatori per le partite in arrivo, con nome squadra e avversario."""
-    query = """
+    query = f"""
         SELECT pl.id AS player_id, pl.name AS player, t.name AS team, m.id AS match_id,
                m.date, m.league,
                ht.name AS home_team, at.name AS away_team,
@@ -398,7 +430,7 @@ def load_upcoming_player_predictions(conn):
         JOIN matches m ON m.id = pp.match_id
         JOIN teams ht ON ht.id = m.home_team_id
         JOIN teams at ON at.id = m.away_team_id
-        WHERE m.date >= date('now') AND m.home_goals IS NULL
+        WHERE {not_started_sql(conn)} AND m.home_goals IS NULL
         ORDER BY pp.prob_score_anytime DESC
     """
     return pd.read_sql_query(query, conn)
@@ -407,15 +439,18 @@ def load_upcoming_player_predictions(conn):
 def load_scorer_odds(conn):
     """Ultima quota 'marcatore' di ogni bookmaker per ogni giocatore
     riconosciuto, per le partite in arrivo."""
-    query = """
+    query = f"""
         WITH ultima AS (
             SELECT s.match_id, s.player_id, s.bookmaker, s.odds, s.snapshot_time,
                    ROW_NUMBER() OVER (PARTITION BY s.match_id, s.player_id, s.bookmaker
                                       ORDER BY s.snapshot_time DESC) AS rn
             FROM scorer_odds s JOIN matches m ON m.id = s.match_id
-            WHERE s.player_id IS NOT NULL AND m.date >= date('now') AND m.home_goals IS NULL
-        )
-        SELECT match_id, player_id, bookmaker, odds, snapshot_time FROM ultima WHERE rn = 1
+            WHERE s.player_id IS NOT NULL AND {not_started_sql(conn)} AND m.home_goals IS NULL
+        ),
+        ultimo_giro AS (SELECT match_id, MAX(snapshot_time) AS t FROM ultima GROUP BY match_id)
+        SELECT u.match_id, u.player_id, u.bookmaker, u.odds, u.snapshot_time
+        FROM ultima u JOIN ultimo_giro g ON g.match_id = u.match_id
+        WHERE u.rn = 1 AND datetime(u.snapshot_time) >= datetime(g.t, '-{FRESH_HOURS} hours')
     """
     try:
         return pd.read_sql_query(query, conn)
@@ -619,12 +654,17 @@ MAX_ODDS = 5.0   # oltre, nel backtest, perdite pesanti anche con "valore" appar
 def fair_for_match(conn, match_id):
     """Probabilità giuste della partita dall'ultima quota di Pinnacle
     (margine tolto col metodo potenza). Vuoto se Pinnacle non la quota."""
-    rows = conn.execute("""
+    # Pinnacle vale come riferimento solo se non è più vecchia delle quote
+    # italiane della stessa partita (vedi FRESH_HOURS): se non la quota più,
+    # non sappiamo qual è il prezzo giusto.
+    rows = conn.execute(f"""
         SELECT selection, odds FROM (
-            SELECT selection, odds, ROW_NUMBER() OVER (
+            SELECT selection, odds, snapshot_time, ROW_NUMBER() OVER (
                 PARTITION BY selection ORDER BY snapshot_time DESC) AS rn
             FROM reference_odds WHERE match_id = ? AND bookmaker = 'Pinnacle')
-        WHERE rn = 1""", (match_id,)).fetchall()
+        WHERE rn = 1 AND datetime(snapshot_time) >= datetime(
+            COALESCE((SELECT MAX(snapshot_time) FROM odds_snapshots WHERE match_id = ?),
+                     snapshot_time), '-{FRESH_HOURS} hours')""", (match_id, match_id)).fetchall()
     return fair_probabilities(dict(rows)) if rows else {}
 
 
@@ -1324,6 +1364,22 @@ with tab_performance:
                   f"{chiuse['profitto'].mean():+.1%}" if not chiuse.empty else "—",
                   help="Profitto medio per unità puntata. Con poche scommesse è molto "
                        "influenzato dalla fortuna: guarda soprattutto il CLV.")
+        if has_kickoff(conn):
+            ko = pd.read_sql_query("SELECT id AS match_id, kickoff_utc FROM matches "
+                                   "WHERE kickoff_utc IS NOT NULL", conn)
+            vk = vb.merge(ko, on="match_id", how="inner")
+            vk = vk[vk["home_goals"].notna() | (pd.to_datetime(vk["kickoff_utc"], utc=True)
+                                                 <= pd.Timestamp.now(tz="UTC"))]
+            if not vk.empty:
+                anticipo = ((pd.to_datetime(vk["kickoff_utc"], utc=True)
+                             - pd.to_datetime(vk["close_updated_at"], utc=True, format="ISO8601"))
+                            .dt.total_seconds() / 60)
+                vicine = (anticipo <= 60).mean()
+                st.caption(
+                    f"Chiusura delle scommesse già iniziate: presa in mediana "
+                    f"{anticipo.median():.0f} minuti prima del calcio d'inizio; entro un'ora "
+                    f"per il {vicine:.0%} delle scommesse. Più è vicina all'inizio, più il "
+                    f"CLV è affidabile.")
         per_book = vb.groupby("bookmaker").agg(scommesse=("id", "count"),
                                                clv_medio=("clv", "mean")).reset_index()
         per_book["clv_medio"] = (per_book["clv_medio"] * 100).round(1)
