@@ -5,7 +5,7 @@
     "bookmaker": "William Hill",
     "stake": 5.0,
     "target_roi_pct": 40,
-    "status": "pending",
+    "status": "lost",
     "combined_odds": 1.823,
     "legs": [
       {
@@ -32,6 +32,37 @@
         "odds": 1.08,
         "model_probability": 1.0
       }
-    ]
+    ],
+    "settled_at": "2026-10-14T11:01:44.571164+00:00",
+    "result_summary": {
+      "legs": [
+        {
+          "match_label": "Arsenal vs Lille",
+          "selection": "1 · casa",
+          "actual_result": "3-0",
+          "won": true,
+          "void": false,
+          "odds": 1.25
+        },
+        {
+          "match_label": "Galatasaray vs Barcelona",
+          "selection": "2 · trasferta",
+          "actual_result": "1-4",
+          "won": true,
+          "void": false,
+          "odds": 1.35
+        },
+        {
+          "match_label": "Viking FK vs Bayern Munich",
+          "selection": "2 · trasferta",
+          "actual_result": "3-3",
+          "won": false,
+          "void": false,
+          "odds": 1.08
+        }
+      ],
+      "payout": 0.0,
+      "profit": -5.0
+    }
   }
 ]
