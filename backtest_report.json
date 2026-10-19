@@ -1,135 +1,135 @@
 {
- "partite_valutate": 3710,
+ "partite_valutate": 3702,
  "1x2": {
   "log_loss": {
-   "modello": 0.984,
-   "mercato_media": 0.9641,
-   "pinnacle_chiusura": 0.9621
+   "modello": 0.9849,
+   "mercato_media": 0.9646,
+   "pinnacle_chiusura": 0.9627
   },
   "brier": {
-   "modello": 0.586,
-   "pinnacle_chiusura": 0.5719
+   "modello": 0.5867,
+   "pinnacle_chiusura": 0.5723
   },
   "calibrazione": [
    {
     "fascia": "0%-10%",
-    "n": 281,
-    "prevista": 0.076,
-    "reale": 0.068
+    "n": 287,
+    "prevista": 0.075,
+    "reale": 0.07
    },
    {
     "fascia": "10%-20%",
-    "n": 1510,
-    "prevista": 0.16,
-    "reale": 0.151
+    "n": 1517,
+    "prevista": 0.159,
+    "reale": 0.153
    },
    {
     "fascia": "20%-30%",
-    "n": 4326,
+    "n": 4267,
     "prevista": 0.253,
     "reale": 0.262
    },
    {
     "fascia": "30%-40%",
-    "n": 1908,
+    "n": 1953,
     "prevista": 0.344,
-    "reale": 0.324
+    "reale": 0.33
    },
    {
     "fascia": "40%-50%",
-    "n": 1276,
+    "n": 1257,
     "prevista": 0.448,
-    "reale": 0.453
+    "reale": 0.445
    },
    {
     "fascia": "50%-60%",
-    "n": 920,
+    "n": 906,
     "prevista": 0.545,
     "reale": 0.52
    },
    {
     "fascia": "60%-70%",
-    "n": 580,
+    "n": 582,
     "prevista": 0.644,
-    "reale": 0.683
+    "reale": 0.677
    },
    {
     "fascia": "70%-80%",
-    "n": 258,
+    "n": 266,
     "prevista": 0.744,
     "reale": 0.748
    },
    {
     "fascia": "80%-90%",
     "n": 68,
-    "prevista": 0.837,
+    "prevista": 0.838,
     "reale": 0.912
    }
   ],
   "miscela": [
    {
     "peso_modello": 0.0,
-    "log_loss": 0.9638
+    "log_loss": 0.9644
    },
    {
     "peso_modello": 0.2,
-    "log_loss": 0.9655
+    "log_loss": 0.9661
    },
    {
     "peso_modello": 0.4,
-    "log_loss": 0.9684
+    "log_loss": 0.969
    },
    {
     "peso_modello": 0.5,
-    "log_loss": 0.9703
+    "log_loss": 0.9709
    },
    {
     "peso_modello": 0.6,
-    "log_loss": 0.9724
+    "log_loss": 0.9731
    },
    {
     "peso_modello": 0.8,
-    "log_loss": 0.9776
+    "log_loss": 0.9783
    },
    {
     "peso_modello": 1.0,
-    "log_loss": 0.984
+    "log_loss": 0.9849
    }
   ],
   "peso_modello_migliore": 0.0,
   "scommesse_modello": [
    {
     "fascia_ev": "+0% / +5%",
-    "scommesse": 1130,
-    "vinte": 0.328,
-    "roi": -0.063,
-    "clv_medio": -0.05
+    "scommesse": 1112,
+    "vinte": 0.332,
+    "roi": -0.054,
+    "clv_medio": -0.051
    },
    {
     "fascia_ev": "+5% / +10%",
-    "scommesse": 780,
-    "vinte": 0.296,
-    "roi": -0.119,
+    "scommesse": 785,
+    "vinte": 0.302,
+    "roi": -0.107,
     "clv_medio": -0.053
    },
    {
     "fascia_ev": "+10% / +25%",
-    "scommesse": 1205,
-    "vinte": 0.256,
-    "roi": -0.138,
-    "clv_medio": -0.069
+    "scommesse": 1224,
+    "vinte": 0.252,
+    "roi": -0.149,
+    "clv_medio": -0.067
    },
    {
     "fascia_ev": "oltre +25%",
-    "scommesse": 714,
-    "vinte": 0.195,
-    "roi": -0.131,
+    "scommesse": 741,
+    "vinte": 0.194,
+    "roi": -0.143,
     "clv_medio": -0.069
    }
   ],
   "totale_modello": {
-   "scommesse": 3829,
-   "roi": -0.11
+   "scommesse": 3862,
+   "roi": -0.112
   },
   "scommesse_miscela": [
    {
@@ -161,86 +161,86 @@
  },
  "over_under_2_5": {
   "log_loss": {
-   "modello": 0.6813,
-   "pinnacle_chiusura": 0.6706
+   "modello": 0.6814,
+   "pinnacle_chiusura": 0.671
   },
   "calibrazione": [
    {
     "fascia": "20%-30%",
-    "n": 111,
-    "prevista": 0.27,
-    "reale": 0.36
+    "n": 126,
+    "prevista": 0.269,
+    "reale": 0.381
    },
    {
     "fascia": "30%-40%",
-    "n": 503,
-    "prevista": 0.36,
-    "reale": 0.447
+    "n": 492,
+    "prevista": 0.358,
+    "reale": 0.441
    },
    {
     "fascia": "40%-50%",
-    "n": 961,
+    "n": 951,
     "prevista": 0.454,
-    "reale": 0.484
+    "reale": 0.485
    },
    {
     "fascia": "50%-60%",
-    "n": 1243,
+    "n": 1217,
     "prevista": 0.55,
-    "reale": 0.561
+    "reale": 0.558
    },
    {
     "fascia": "60%-70%",
-    "n": 711,
+    "n": 725,
     "prevista": 0.641,
-    "reale": 0.609
+    "reale": 0.621
    },
    {
     "fascia": "70%-80%",
-    "n": 152,
-    "prevista": 0.738,
-    "reale": 0.73
+    "n": 160,
+    "prevista": 0.74,
+    "reale": 0.719
    },
    {
     "fascia": "80%-90%",
-    "n": 25,
+    "n": 27,
     "prevista": 0.826,
-    "reale": 0.8
+    "reale": 0.815
    }
   ],
   "scommesse_modello": [
    {
     "fascia_ev": "+0% / +5%",
-    "scommesse": 900,
-    "vinte": 0.516,
-    "roi": -0.031,
+    "scommesse": 917,
+    "vinte": 0.498,
+    "roi": -0.07,
     "clv_medio": -0.05
    },
    {
     "fascia_ev": "+5% / +10%",
-    "scommesse": 601,
-    "vinte": 0.478,
-    "roi": -0.077,
-    "clv_medio": -0.05
+    "scommesse": 596,
+    "vinte": 0.47,
+    "roi": -0.109,
+    "clv_medio": -0.053
    },
    {
     "fascia_ev": "+10% / +25%",
-    "scommesse": 750,
-    "vinte": 0.443,
-    "roi": -0.103,
-    "clv_medio": -0.055
+    "scommesse": 751,
+    "vinte": 0.458,
+    "roi": -0.069,
+    "clv_medio": -0.052
    },
    {
     "fascia_ev": "oltre +25%",
-    "scommesse": 182,
-    "vinte": 0.467,
-    "roi": 0.1,
-    "clv_medio": -0.043
+    "scommesse": 179,
+    "vinte": 0.486,
+    "roi": 0.122,
+    "clv_medio": -0.047
    }
   ],
   "totale_modello": {
-   "scommesse": 2433,
-   "roi": -0.055
+   "scommesse": 2443,
+   "roi": -0.065
   }
  },
  "goal_no_goal": {
@@ -248,38 +248,38 @@
    {
     "fascia": "20%-30%",
     "n": 21,
-    "prevista": 0.275,
-    "reale": 0.429
+    "prevista": 0.276,
+    "reale": 0.381
    },
    {
     "fascia": "30%-40%",
-    "n": 292,
-    "prevista": 0.369,
-    "reale": 0.452
+    "n": 315,
+    "prevista": 0.367,
+    "reale": 0.476
    },
    {
     "fascia": "40%-50%",
-    "n": 1128,
-    "prevista": 0.455,
-    "reale": 0.52
+    "n": 1097,
+    "prevista": 0.456,
+    "reale": 0.517
    },
    {
     "fascia": "50%-60%",
-    "n": 1595,
-    "prevista": 0.548,
-    "reale": 0.559
+    "n": 1582,
+    "prevista": 0.549,
+    "reale": 0.558
    },
    {
     "fascia": "60%-70%",
-    "n": 640,
+    "n": 645,
     "prevista": 0.635,
-    "reale": 0.606
+    "reale": 0.617
    },
    {
     "fascia": "70%-80%",
-    "n": 33,
+    "n": 41,
     "prevista": 0.724,
-    "reale": 0.788
+    "reale": 0.707
    }
   ]
  },
@@ -307,21 +307,21 @@
   "1x2_quota_massima": [
    {
     "soglia_vantaggio": "+0%",
-    "scommesse": 2105,
-    "roi": -0.092,
+    "scommesse": 2100,
+    "roi": -0.09,
     "clv_medio": 0.024
    },
    {
     "soglia_vantaggio": "+2%",
-    "scommesse": 977,
-    "roi": -0.114,
-    "clv_medio": 0.04
+    "scommesse": 973,
+    "roi": -0.11,
+    "clv_medio": 0.041
    },
    {
     "soglia_vantaggio": "+5%",
-    "scommesse": 375,
-    "roi": -0.186,
-    "clv_medio": 0.065
+    "scommesse": 372,
+    "roi": -0.179,
+    "clv_medio": 0.066
    }
   ],
   "ou25_bet365": [
@@ -347,8 +347,8 @@
   "ou25_quota_massima": [
    {
     "soglia_vantaggio": "+0%",
-    "scommesse": 401,
-    "roi": 0.006,
+    "scommesse": 400,
+    "roi": 0.008,
     "clv_medio": 0.028
    },
    {
@@ -367,14 +367,14 @@
   "1x2_quota_massima_potenza": [
    {
     "soglia_vantaggio": "+0% · quote 1-2.5",
-    "scommesse": 873,
-    "roi": 0.031,
+    "scommesse": 871,
+    "roi": 0.03,
     "clv_medio": 0.009
    },
    {
     "soglia_vantaggio": "+0% · quote 2.5-5",
-    "scommesse": 779,
-    "roi": 0.009,
+    "scommesse": 778,
+    "roi": 0.011,
     "clv_medio": 0.024
    },
    {
@@ -423,8 +423,8 @@
   "ou25_quota_massima_potenza": [
    {
     "soglia_vantaggio": "+0%",
-    "scommesse": 449,
-    "roi": 0.039,
+    "scommesse": 448,
+    "roi": 0.038,
     "clv_medio": 0.018
    },
    {
@@ -453,9 +453,9 @@
    "pinnacle_chiusura": 0.9753
   },
   "La Liga": {
-   "modello": 0.9667,
-   "mercato_media": 0.9506,
-   "pinnacle_chiusura": 0.9474
+   "modello": 0.9709,
+   "mercato_media": 0.9532,
+   "pinnacle_chiusura": 0.9503
   },
   "Bundesliga": {
    "modello": 0.9948,
@@ -474,207 +474,207 @@
    "a": "2026-09-30"
   },
   "riferimenti": {
-   "partite": 2625,
-   "pinnacle_mattino": 0.9632,
-   "pinnacle_chiusura": 0.96145,
-   "dixon_coles": 0.98402
+   "partite": 2622,
+   "pinnacle_mattino": 0.96381,
+   "pinnacle_chiusura": 0.9621,
+   "dixon_coles": 0.98493
   },
   "varianti": [
    {
     "variante": "gol (reg. 0.003)",
-    "log_loss": 0.96307,
+    "log_loss": 0.96366,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.00014,
-     "da": -0.00291,
-     "a": 0.00293,
+     "partite": 2622,
+     "differenza": -0.00015,
+     "da": -0.00295,
+     "a": 0.00299,
      "significativa": false
     }
    },
    {
     "variante": "gol (reg. 0.03)",
-    "log_loss": 0.9625,
+    "log_loss": 0.96308,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.0007,
-     "da": -0.00272,
-     "a": 0.00149,
+     "partite": 2622,
+     "differenza": -0.00073,
+     "da": -0.00278,
+     "a": 0.0015,
      "significativa": false
     }
    },
    {
     "variante": "gol (reg. 0.3)",
-    "log_loss": 0.96269,
+    "log_loss": 0.96327,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.00051,
-     "da": -0.00117,
+     "partite": 2622,
+     "differenza": -0.00054,
+     "da": -0.0012,
      "a": 0.00021,
      "significativa": false
     }
    },
    {
     "variante": "tiri (reg. 0.003)",
-    "log_loss": 0.96289,
+    "log_loss": 0.96346,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.00032,
-     "da": -0.00294,
-     "a": 0.00239,
+     "partite": 2622,
+     "differenza": -0.00035,
+     "da": -0.00288,
+     "a": 0.00235,
      "significativa": false
     }
    },
    {
     "variante": "tiri (reg. 0.03)",
-    "log_loss": 0.96242,
+    "log_loss": 0.96303,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.00078,
-     "da": -0.00264,
-     "a": 0.00125,
+     "partite": 2622,
+     "differenza": -0.00077,
+     "da": -0.00254,
+     "a": 0.00118,
      "significativa": false
     }
    },
    {
     "variante": "tiri (reg. 0.3)",
-    "log_loss": 0.9627,
+    "log_loss": 0.96332,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.00051,
-     "da": -0.00111,
-     "a": 0.00016,
+     "partite": 2622,
+     "differenza": -0.00049,
+     "da": -0.00107,
+     "a": 0.00015,
      "significativa": false
     }
    },
    {
     "variante": "tiri in porta (reg. 0.003)",
-    "log_loss": 0.96315,
+    "log_loss": 0.96384,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -5e-05,
-     "da": -0.00253,
-     "a": 0.00245,
+     "partite": 2622,
+     "differenza": 3e-05,
+     "da": -0.00246,
+     "a": 0.00261,
      "significativa": false
     }
    },
    {
     "variante": "tiri in porta (reg. 0.03)",
-    "log_loss": 0.96265,
+    "log_loss": 0.9633,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.00056,
-     "da": -0.00226,
-     "a": 0.00128,
+     "partite": 2622,
+     "differenza": -0.00051,
+     "da": -0.00224,
+     "a": 0.00135,
      "significativa": false
     }
    },
    {
     "variante": "tiri in porta (reg. 0.3)",
-    "log_loss": 0.9628,
+    "log_loss": 0.96341,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.00041,
-     "da": -0.00095,
-     "a": 0.0002,
+     "partite": 2622,
+     "differenza": -0.0004,
+     "da": -0.00093,
+     "a": 0.00019,
      "significativa": false
     }
    },
    {
     "variante": "gol + tiri + tiri in porta (reg. 0.003)",
-    "log_loss": 0.96323,
+    "log_loss": 0.9638,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": 3e-05,
-     "da": -0.00286,
+     "partite": 2622,
+     "differenza": -1e-05,
+     "da": -0.00294,
      "a": 0.00313,
      "significativa": false
     }
    },
    {
     "variante": "gol + tiri + tiri in porta (reg. 0.03)",
-    "log_loss": 0.96261,
+    "log_loss": 0.96321,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.00059,
-     "da": -0.00271,
-     "a": 0.00168,
+     "partite": 2622,
+     "differenza": -0.0006,
+     "da": -0.00274,
+     "a": 0.00174,
      "significativa": false
     }
    },
    {
     "variante": "gol + tiri + tiri in porta (reg. 0.3)",
-    "log_loss": 0.96264,
+    "log_loss": 0.96325,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.00057,
-     "da": -0.0015,
-     "a": 0.00044,
+     "partite": 2622,
+     "differenza": -0.00056,
+     "da": -0.00149,
+     "a": 0.00046,
      "significativa": false
     }
    },
    {
     "variante": "tutti + campionato (reg. 0.003)",
-    "log_loss": 0.9643,
+    "log_loss": 0.96488,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": 0.0011,
-     "da": -0.00234,
-     "a": 0.0048,
+     "partite": 2622,
+     "differenza": 0.00108,
+     "da": -0.00252,
+     "a": 0.00481,
      "significativa": false
     }
    },
    {
     "variante": "tutti + campionato (reg. 0.03)",
-    "log_loss": 0.96332,
+    "log_loss": 0.96392,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": 0.00012,
-     "da": -0.00232,
-     "a": 0.00273,
+     "partite": 2622,
+     "differenza": 0.00011,
+     "da": -0.00238,
+     "a": 0.00278,
      "significativa": false
     }
    },
    {
     "variante": "tutti + campionato (reg. 0.3)",
-    "log_loss": 0.96285,
+    "log_loss": 0.96345,
     "contro_pinnacle": {
-     "partite": 2625,
+     "partite": 2622,
      "differenza": -0.00036,
      "da": -0.0014,
-     "a": 0.00075,
+     "a": 0.00074,
      "significativa": false
     }
    },
    {
     "variante": "tutti + campionato × segnali (reg. 0.003)",
-    "log_loss": 0.96463,
+    "log_loss": 0.9653,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": 0.00142,
-     "da": -0.00299,
-     "a": 0.0061,
+     "partite": 2622,
+     "differenza": 0.00149,
+     "da": -0.00297,
+     "a": 0.0062,
      "significativa": false
     }
    },
    {
     "variante": "tutti + campionato × segnali (reg. 0.03)",
-    "log_loss": 0.96345,
+    "log_loss": 0.96413,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": 0.00025,
-     "da": -0.00284,
-     "a": 0.00347,
+     "partite": 2622,
+     "differenza": 0.00032,
+     "da": -0.0028,
+     "a": 0.00352,
      "significativa": false
     }
    },
    {
     "variante": "tutti + campionato × segnali (reg. 0.3)",
-    "log_loss": 0.96298,
+    "log_loss": 0.96364,
     "contro_pinnacle": {
-     "partite": 2625,
-     "differenza": -0.00023,
-     "da": -0.00179,
-     "a": 0.00133,
+     "partite": 2622,
+     "differenza": -0.00017,
+     "da": -0.00169,
+     "a": 0.00134,
      "significativa": false
     }
    }
@@ -682,29 +682,29 @@
   "variante_scelta": "tiri (reg. 0.03)",
   "anteprima_regola_sviluppo": {
    "log_loss": {
-    "partite": 2625,
-    "differenza": -0.00078,
-    "da": -0.00264,
-    "a": 0.00125,
+    "partite": 2622,
+    "differenza": -0.00077,
+    "da": -0.00254,
+    "a": 0.00118,
     "significativa": false
    },
    "brier": {
-    "partite": 2625,
-    "differenza": -0.00023,
-    "da": -0.00137,
-    "a": 0.00093,
+    "partite": 2622,
+    "differenza": -0.00024,
+    "da": -0.00133,
+    "a": 0.00092,
     "significativa": false
    },
    "calibrazione": {
-    "candidato": 0.009,
-    "pinnacle": 0.008
+    "candidato": 0.0081,
+    "pinnacle": 0.0078
    },
    "per_campionato": {
-    "Serie A": -0.005,
-    "Premier League": 0.00058,
-    "La Liga": -0.00037,
-    "Bundesliga": -0.00204,
-    "Ligue 1": 0.00353
+    "Serie A": -0.00485,
+    "Premier League": 0.00046,
+    "La Liga": -0.00039,
+    "Bundesliga": -0.00198,
+    "Ligue 1": 0.00349
    },
    "regole": {
     "log loss migliore, intervallo tutto sotto zero": false,
@@ -724,8 +724,8 @@
    "per_stagione": [
     {
      "gruppo": "2024-25",
-     "partite": 1736,
-     "con_pinnacle": 1736,
+     "partite": 1733,
+     "con_pinnacle": 1733,
      "copertura": 1.0
     },
     {
@@ -736,7 +736,7 @@
     },
     {
      "gruppo": "2026-27",
-     "partite": 235,
+     "partite": 230,
      "con_pinnacle": 0,
      "copertura": 0.0
     }
@@ -744,40 +744,40 @@
    "per_campionato": [
     {
      "gruppo": "Bundesliga",
-     "partite": 640,
+     "partite": 649,
      "con_pinnacle": 449,
-     "copertura": 0.702
+     "copertura": 0.692
     },
     {
      "gruppo": "La Liga",
-     "partite": 814,
-     "con_pinnacle": 561,
-     "copertura": 0.689
+     "partite": 820,
+     "con_pinnacle": 558,
+     "copertura": 0.68
     },
     {
      "gruppo": "Ligue 1",
-     "partite": 652,
+     "partite": 609,
      "con_pinnacle": 456,
-     "copertura": 0.699
+     "copertura": 0.749
     },
     {
      "gruppo": "Premier League",
-     "partite": 801,
+     "partite": 811,
      "con_pinnacle": 584,
-     "copertura": 0.729
+     "copertura": 0.72
     },
     {
      "gruppo": "Serie A",
-     "partite": 803,
+     "partite": 813,
      "con_pinnacle": 571,
-     "copertura": 0.711
+     "copertura": 0.702
     }
    ],
    "per_mese": [
     {
      "gruppo": "2024-08",
-     "partite": 109,
-     "con_pinnacle": 109,
+     "partite": 106,
+     "con_pinnacle": 106,
      "copertura": 1.0
     },
     {
@@ -896,26 +896,32 @@
     },
     {
      "gruppo": "2026-08",
-     "partite": 82,
+     "partite": 66,
      "con_pinnacle": 0,
      "copertura": 0.0
     },
     {
      "gruppo": "2026-09",
-     "partite": 153,
+     "partite": 126,
+     "con_pinnacle": 0,
+     "copertura": 0.0
+    },
+    {
+     "gruppo": "2026-10",
+     "partite": 38,
      "con_pinnacle": 0,
      "copertura": 0.0
     }
    ],
    "favorita_media": {
     "con_pinnacle": 0.525,
-    "senza_pinnacle": 0.516
+    "senza_pinnacle": 0.518
    }
   }
  },
  "periodo": {
   "da": "2024-08-15",
-  "a": "2026-09-20"
+  "a": "2026-10-12"
  },
- "generato": "2026-10-12T11:50:24.131081+00:00"
+ "generato": "2026-10-19T09:49:30.854980+00:00"
 }
