@@ -1,5 +1,5 @@
 {
- "partite_valutate": 3907,
+ "partite_valutate": 3960,
  "1x2": {
   "log_loss": {
    "modello": 0.984,
@@ -13,45 +13,45 @@
   "calibrazione": [
    {
     "fascia": "0%-10%",
-    "n": 295,
+    "n": 297,
     "prevista": 0.076,
-    "reale": 0.068
+    "reale": 0.067
    },
    {
     "fascia": "10%-20%",
-    "n": 1591,
+    "n": 1607,
     "prevista": 0.16,
     "reale": 0.15
    },
    {
     "fascia": "20%-30%",
-    "n": 4566,
+    "n": 4635,
     "prevista": 0.252,
-    "reale": 0.26
+    "reale": 0.259
    },
    {
     "fascia": "30%-40%",
-    "n": 1997,
+    "n": 2025,
     "prevista": 0.344,
-    "reale": 0.324
+    "reale": 0.325
    },
    {
     "fascia": "40%-50%",
-    "n": 1340,
+    "n": 1361,
     "prevista": 0.448,
     "reale": 0.457
    },
    {
     "fascia": "50%-60%",
-    "n": 975,
+    "n": 987,
     "prevista": 0.545,
-    "reale": 0.525
+    "reale": 0.527
    },
    {
     "fascia": "60%-70%",
-    "n": 612,
+    "n": 622,
     "prevista": 0.644,
-    "reale": 0.683
+    "reale": 0.686
    },
    {
     "fascia": "70%-80%",
@@ -61,9 +61,9 @@
    },
    {
     "fascia": "80%-90%",
-    "n": 70,
+    "n": 71,
     "prevista": 0.838,
-    "reale": 0.914
+    "reale": 0.915
    }
   ],
   "miscela": [
@@ -100,36 +100,36 @@
   "scommesse_modello": [
    {
     "fascia_ev": "+0% / +5%",
-    "scommesse": 1187,
-    "vinte": 0.33,
-    "roi": -0.054,
+    "scommesse": 1204,
+    "vinte": 0.328,
+    "roi": -0.06,
     "clv_medio": -0.05
    },
    {
     "fascia_ev": "+5% / +10%",
-    "scommesse": 819,
-    "vinte": 0.305,
-    "roi": -0.09,
+    "scommesse": 829,
+    "vinte": 0.304,
+    "roi": -0.093,
     "clv_medio": -0.053
    },
    {
     "fascia_ev": "+10% / +25%",
-    "scommesse": 1270,
-    "vinte": 0.254,
-    "roi": -0.147,
+    "scommesse": 1281,
+    "vinte": 0.253,
+    "roi": -0.151,
     "clv_medio": -0.069
    },
    {
     "fascia_ev": "oltre +25%",
-    "scommesse": 760,
-    "vinte": 0.196,
-    "roi": -0.128,
+    "scommesse": 771,
+    "vinte": 0.195,
+    "roi": -0.138,
     "clv_medio": -0.069
    }
   ],
   "totale_modello": {
-   "scommesse": 4036,
-   "roi": -0.104
+   "scommesse": 4085,
+   "roi": -0.11
   },
   "scommesse_miscela": [
    {
@@ -173,33 +173,33 @@
    },
    {
     "fascia": "30%-40%",
-    "n": 522,
+    "n": 526,
     "prevista": 0.36,
-    "reale": 0.448
+    "reale": 0.449
    },
    {
     "fascia": "40%-50%",
-    "n": 1012,
+    "n": 1029,
     "prevista": 0.454,
-    "reale": 0.488
+    "reale": 0.486
    },
    {
     "fascia": "50%-60%",
-    "n": 1311,
+    "n": 1330,
     "prevista": 0.55,
-    "reale": 0.563
+    "reale": 0.562
    },
    {
     "fascia": "60%-70%",
-    "n": 751,
+    "n": 761,
     "prevista": 0.642,
     "reale": 0.606
    },
    {
     "fascia": "70%-80%",
-    "n": 162,
-    "prevista": 0.739,
-    "reale": 0.735
+    "n": 165,
+    "prevista": 0.74,
+    "reale": 0.733
    },
    {
     "fascia": "80%-90%",
@@ -211,36 +211,36 @@
   "scommesse_modello": [
    {
     "fascia_ev": "+0% / +5%",
-    "scommesse": 928,
-    "vinte": 0.51,
-    "roi": -0.04,
+    "scommesse": 937,
+    "vinte": 0.509,
+    "roi": -0.042,
     "clv_medio": -0.05
    },
    {
     "fascia_ev": "+5% / +10%",
-    "scommesse": 634,
-    "vinte": 0.476,
-    "roi": -0.076,
+    "scommesse": 648,
+    "vinte": 0.474,
+    "roi": -0.08,
     "clv_medio": -0.05
    },
    {
     "fascia_ev": "+10% / +25%",
-    "scommesse": 800,
+    "scommesse": 813,
     "vinte": 0.439,
-    "roi": -0.104,
+    "roi": -0.101,
     "clv_medio": -0.055
    },
    {
     "fascia_ev": "oltre +25%",
-    "scommesse": 210,
-    "vinte": 0.462,
-    "roi": 0.088,
+    "scommesse": 217,
+    "vinte": 0.456,
+    "roi": 0.075,
     "clv_medio": -0.043
    }
   ],
   "totale_modello": {
-   "scommesse": 2572,
-   "roi": -0.058
+   "scommesse": 2615,
+   "roi": -0.06
   }
  },
  "goal_no_goal": {
@@ -253,33 +253,33 @@
    },
    {
     "fascia": "30%-40%",
-    "n": 307,
+    "n": 309,
     "prevista": 0.368,
-    "reale": 0.459
+    "reale": 0.46
    },
    {
     "fascia": "40%-50%",
-    "n": 1183,
+    "n": 1201,
     "prevista": 0.456,
     "reale": 0.52
    },
    {
     "fascia": "50%-60%",
-    "n": 1673,
-    "prevista": 0.548,
-    "reale": 0.56
+    "n": 1693,
+    "prevista": 0.549,
+    "reale": 0.559
    },
    {
     "fascia": "60%-70%",
-    "n": 683,
+    "n": 695,
     "prevista": 0.635,
     "reale": 0.6
    },
    {
     "fascia": "70%-80%",
-    "n": 37,
-    "prevista": 0.724,
-    "reale": 0.784
+    "n": 38,
+    "prevista": 0.723,
+    "reale": 0.789
    }
   ]
  },
@@ -736,7 +736,7 @@
     },
     {
      "gruppo": "2026-27",
-     "partite": 432,
+     "partite": 485,
      "con_pinnacle": 0,
      "copertura": 0.0
     }
@@ -744,33 +744,33 @@
    "per_campionato": [
     {
      "gruppo": "Bundesliga",
-     "partite": 676,
+     "partite": 685,
      "con_pinnacle": 449,
-     "copertura": 0.664
+     "copertura": 0.655
     },
     {
      "gruppo": "La Liga",
-     "partite": 853,
+     "partite": 864,
      "con_pinnacle": 561,
-     "copertura": 0.658
+     "copertura": 0.649
     },
     {
      "gruppo": "Ligue 1",
-     "partite": 687,
+     "partite": 697,
      "con_pinnacle": 456,
-     "copertura": 0.664
+     "copertura": 0.654
     },
     {
      "gruppo": "Premier League",
-     "partite": 840,
+     "partite": 851,
      "con_pinnacle": 584,
-     "copertura": 0.695
+     "copertura": 0.686
     },
     {
      "gruppo": "Serie A",
-     "partite": 851,
+     "partite": 863,
      "con_pinnacle": 571,
-     "copertura": 0.671
+     "copertura": 0.662
     }
    ],
    "per_mese": [
@@ -914,7 +914,7 @@
     },
     {
      "gruppo": "2026-11",
-     "partite": 16,
+     "partite": 69,
      "con_pinnacle": 0,
      "copertura": 0.0
     }
@@ -927,7 +927,7 @@
  },
  "periodo": {
   "da": "2024-08-15",
-  "a": "2026-11-01"
+  "a": "2026-11-08"
  },
- "generato": "2026-11-02T12:13:25.175081+00:00"
+ "generato": "2026-11-09T12:44:11.587252+00:00"
 }
